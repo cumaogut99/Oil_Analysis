@@ -1,0 +1,28 @@
+# Grafik stili - açık tema
+figure.facecolor: ffffff
+axes.facecolor: ffffff
+axes.edgecolor: cbd5e1
+axes.labelcolor: 334155
+axes.titlecolor: 0f172a
+axes.titleweight: semibold
+axes.titlesize: 10
+axes.labelsize: 9
+axes.grid: True
+axes.spines.top: False
+axes.spines.right: False
+axes.prop_cycle: cycler('color', ['2563eb', 'f97316', '10b981', 'e11d48', '8b5cf6', '0ea5e9', 'eab308', '14b8a6', 'ec4899', '64748b'])
+grid.color: e2e8f0
+grid.linewidth: 0.8
+grid.alpha: 1.0
+xtick.color: 64748b
+ytick.color: 64748b
+xtick.labelsize: 8
+ytick.labelsize: 8
+text.color: 0f172a
+legend.frameon: False
+legend.fontsize: 8
+lines.linewidth: 1.6
+lines.markersize: 5
+font.family: sans-serif
+font.sans-serif: Segoe UI, Inter, Roboto, DejaVu Sans, Arial
+savefig.facecolor: ffffff

@@ -1,0 +1,53 @@
+{
+  "name": "Açık",
+  "dark": false,
+  "font_family": "Segoe UI, Inter, Roboto, Arial",
+  "font_size": "10pt",
+  "radius": "8px",
+  "radius_sm": "6px",
+
+  "bg": "#f3f5f9",
+  "surface": "#ffffff",
+  "surface_alt": "#f8fafc",
+  "surface_hover": "#eef2f7",
+  "border": "#e2e8f0",
+  "border_strong": "#cbd5e1",
+  "text": "#0f172a",
+  "text_muted": "#64748b",
+  "text_inverse": "#ffffff",
+
+  "primary": "#2563eb",
+  "primary_hover": "#1d4ed8",
+  "primary_pressed": "#1e40af",
+  "primary_soft": "#dbeafe",
+  "danger": "#dc2626",
+  "danger_hover": "#b91c1c",
+
+  "sidebar": "#0f172a",
+  "sidebar_text": "#94a3b8",
+  "sidebar_text_active": "#f8fafc",
+  "sidebar_active": "#1e293b",
+  "sidebar_accent": "#38bdf8",
+
+  "input_bg": "#ffffff",
+  "selection": "#dbeafe",
+  "selection_text": "#0f172a",
+  "header_bg": "#f8fafc",
+  "scrollbar": "#cbd5e1",
+
+  "status_ok": "#dcfce7",
+  "status_ok_fg": "#166534",
+  "status_warn": "#fef3c7",
+  "status_warn_fg": "#92400e",
+  "status_alarm": "#fee2e2",
+  "status_alarm_fg": "#991b1b",
+  "status_excluded_fg": "#94a3b8",
+
+  "chart_ok": "#16a34a",
+  "chart_warn": "#d97706",
+  "chart_alarm": "#dc2626",
+  "chart_na": "#94a3b8",
+  "chart_line": "#475569",
+  "chart_band": "#16a34a",
+  "heatmap": "RdBu_r"
+}

@@ -128,6 +128,10 @@ class SettingsDialog(QDialog):
         self.tbn_a = self._dspin(st["tbn_ratio_alarm"], 0.05, 1, 0.05)
         form.addRow("TBN / taze TBN uyarı oranı <", self.tbn_w)
         form.addRow("TBN / taze TBN alarm oranı <", self.tbn_a)
+        self.ch_rel = self._dspin(st.get("change_rel", 50), 1, 1000, 5)
+        self.ch_abs = self._dspin(st.get("change_abs", 2), 0, 1000, 0.5)
+        form.addRow("Parça tahmini: anlamlı artış (%) ≥", self.ch_rel)
+        form.addRow("Parça tahmini: anlamlı artış (birim) ≥", self.ch_abs)
         tabs.addTab(w, "Değerlendirme")
 
         # ---------------- eşleştirmeler
@@ -145,6 +149,7 @@ class SettingsDialog(QDialog):
 
         bb = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         bb.button(QDialogButtonBox.Save).setText("Kaydet")
+        bb.button(QDialogButtonBox.Save).setProperty("variant", "primary")
         bb.button(QDialogButtonBox.Cancel).setText("Vazgeç")
         bb.accepted.connect(self.save)
         bb.rejected.connect(self.reject)
@@ -243,6 +248,7 @@ class SettingsDialog(QDialog):
             "additive_drop_warn": self.add_w.value(), "additive_drop_alarm": self.add_a.value(),
             "visc_change_warn": self.vis_w.value(), "visc_change_alarm": self.vis_a.value(),
             "tbn_ratio_warn": self.tbn_w.value(), "tbn_ratio_alarm": self.tbn_a.value(),
+            "change_rel": self.ch_rel.value(), "change_abs": self.ch_abs.value(),
             "visc_limits": visc,
             "fixed_limits": fixed,
         })

@@ -4,10 +4,11 @@ from __future__ import annotations
 import datetime as dt
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QLabel, QListWidget,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QFrame, QLabel, QListWidget,
                                QListWidgetItem, QSplitter, QVBoxLayout, QWidget)
 
-from .common import STATUS_MPL, AppState, FilterBar, MplWidget
+from . import theme
+from .common import AppState, FilterBar, MplWidget, hint
 
 ALL_MOTORS = "— Tüm motorlar (filtreye göre) —"
 X_OPTIONS = {"Motor çalışma saati": "motor_hours", "Yağ çalışma saati": "oil_hours",
@@ -16,18 +17,31 @@ DEFAULT_KEYS = ["fe", "cu", "al", "pb"]
 
 
 class TrendTab(QWidget):
+    title = "Trend"
+    subtitle = "Motor bazında veya filtrelenmiş tüm motorlarda parametre trendleri"
+    icon = "trend"
+
     def __init__(self, state: AppState, parent=None):
         super().__init__(parent)
         self.state = state
         lay = QVBoxLayout(self)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(12)
+        fcard = QFrame()
+        fcard.setObjectName("Card")
+        fl = QVBoxLayout(fcard)
+        fl.setContentsMargins(14, 10, 14, 10)
         self.filters = FilterBar(state)
         self.filters.changed.connect(self.redraw)
-        lay.addWidget(self.filters)
+        fl.addWidget(self.filters)
+        lay.addWidget(fcard)
         split = QSplitter(Qt.Horizontal)
         lay.addWidget(split, 1)
 
-        left = QWidget()
+        left = QFrame()
+        left.setObjectName("Card")
         ll = QVBoxLayout(left)
+        ll.setContentsMargins(12, 12, 12, 12)
         ll.addWidget(QLabel("Motor:"))
         self.motor = QComboBox()
         self.motor.currentIndexChanged.connect(self.redraw)
@@ -48,9 +62,16 @@ class TrendTab(QWidget):
         self.plist = QListWidget()
         self.plist.itemChanged.connect(self.redraw)
         ll.addWidget(self.plist, 1)
+        ll.addWidget(hint("Nokta rengi: yeşil normal, turuncu uyarı, kırmızı alarm. "
+                          "✕ işaretli noktalar istatistikten hariç tutulmuştur."))
         split.addWidget(left)
+        pcard = QFrame()
+        pcard.setObjectName("Card")
+        pl = QVBoxLayout(pcard)
+        pl.setContentsMargins(8, 8, 8, 8)
         self.plot = MplWidget()
-        split.addWidget(self.plot)
+        pl.addWidget(self.plot)
+        split.addWidget(pcard)
         split.setSizes([260, 1000])
         state.changed.connect(self.on_state_changed)
         self.on_state_changed()
@@ -92,8 +113,7 @@ class TrendTab(QWidget):
 
     def redraw(self, *_):
         st = self.state
-        fig = self.plot.figure
-        fig.clear()
+        fig = self.plot.reset()
         keys = self._checked_keys()[:8]
         if not keys:
             self.plot.draw()
@@ -121,34 +141,41 @@ class TrendTab(QWidget):
                 if y is None or x is None:
                     continue
                 stt = ev.evaluate(s).get(key)
-                groups.setdefault(s.motor_no or "?", []).append((x, y, stt.status if stt else None, s))
+                groups.setdefault(s.motor_no or "?", []).append(
+                    (x, y, stt.status if stt else None, s, s.is_excluded(key)))
             for mno, pts in groups.items():
                 pts.sort(key=lambda t: t[0])
                 xs, ys = [t[0] for t in pts], [t[1] for t in pts]
+                inc = [t for t in pts if not t[4]]
+                exc = [t for t in pts if t[4]]
                 if single:
-                    ax.plot(xs, ys, "-", color="#546e7a", lw=1.2, zorder=1)
-                    ax.scatter(xs, ys, c=[STATUS_MPL[t[2]] for t in pts], s=36, zorder=2,
-                               edgecolors="white", linewidths=0.6)
-                    for x, y, _st, s in pts:
-                        ax.annotate(s.sample_no[-3:], (x, y), fontsize=6, xytext=(2, 3),
-                                    textcoords="offset points", color="#666")
+                    ax.plot(xs, ys, "-", color=theme.token("chart_line"), lw=1.4, zorder=1, alpha=0.8)
+                    ax.scatter([t[0] for t in inc], [t[1] for t in inc],
+                               c=[theme.chart_status(t[2]) for t in inc], s=42, zorder=2,
+                               edgecolors=theme.token("surface"), linewidths=1.0)
+                    for x, y, _st, s, _e in pts:
+                        ax.annotate(s.sample_no[-3:], (x, y), fontsize=6, xytext=(3, 4),
+                                    textcoords="offset points", color=theme.token("text_muted"))
                 else:
-                    ax.plot(xs, ys, "-o", ms=3, lw=0.8, alpha=0.7, label=mno)
+                    ax.plot([t[0] for t in inc], [t[1] for t in inc], "-o", ms=3, lw=0.9,
+                            alpha=0.8, label=mno)
+                if exc:
+                    ax.scatter([t[0] for t in exc], [t[1] for t in exc], marker="x", s=40,
+                               color=theme.token("chart_na"), zorder=3, linewidths=1.4)
             # Limit çizgileri: referans grubu, son numuneye göre
             if self.c_lim.isChecked() and samples:
                 ref = samples[-1] if single else next((s for s in reversed(samples) if not s.is_fresh), None)
                 if ref is not None and not ref.is_fresh:
                     lim = ev.rate_limits(ref, key) if use_rate else ev.limits(ref, key)
                     if lim is not None:
-                        for v, col, ls in ((lim.hi_warn, "#f9a825", "--"), (lim.hi_alarm, "#c62828", "--"),
-                                           (lim.lo_warn, "#f9a825", ":"), (lim.lo_alarm, "#c62828", ":")):
+                        for v, col, ls in ((lim.hi_warn, "chart_warn", "--"), (lim.hi_alarm, "chart_alarm", "--"),
+                                           (lim.lo_warn, "chart_warn", ":"), (lim.lo_alarm, "chart_alarm", ":")):
                             if v is not None:
-                                ax.axhline(v, color=col, ls=ls, lw=1)
+                                ax.axhline(v, color=theme.token(col), ls=ls, lw=1.1)
                     if key == "visc100" and not use_rate and ref.oil_type:
                         rng = st.settings.get("visc_limits", {}).get(ref.oil_type)
                         if rng:
-                            ax.axhspan(rng[0], rng[1], color="#2e7d32", alpha=0.06)
-            ax.grid(alpha=0.3)
+                            ax.axhspan(rng[0], rng[1], color=theme.token("chart_band"), alpha=0.08)
             if p is not None and p.unit and not use_rate:
                 ax.set_ylabel(p.unit, fontsize=8)
             ax.tick_params(labelsize=7)

@@ -95,6 +95,14 @@ class Evaluator:
                 best = p
         return best
 
+    def previous_sample(self, s: Sample) -> Sample | None:
+        """Aynı motorun (yağ dönemine bakılmaksızın) bir önceki numunesi."""
+        if not s.motor_no:
+            return None
+        cands = [p for p in self.population if p is not s and p.motor_no == s.motor_no
+                 and p.sort_key() < s.sort_key()]
+        return max(cands, key=Sample.sort_key) if cands else None
+
     def _compute_rates(self) -> dict[int, dict[str, float]]:
         out: dict[int, dict[str, float]] = {}
         for s in self.population:
@@ -136,7 +144,7 @@ class Evaluator:
         ck = (desc, key, "abs")
         if ck not in self._lim_cache:
             p = self.pmap.get(key)
-            lim = compute_limits([q.values.get(key) for q in pop],
+            lim = compute_limits([q.stat_value(key) for q in pop],
                                  p.direction if p else "up", self.settings)
             lim.note = (lim.note + " | " if lim.note else "") + desc
             self._lim_cache[ck] = lim
@@ -148,7 +156,7 @@ class Evaluator:
         pop, desc = self.ref_population(s)
         ck = (desc, key, "rate")
         if ck not in self._lim_cache:
-            vals = [self.rates.get(q.id, {}).get(key) for q in pop]
+            vals = [self.rates.get(q.id, {}).get(key) for q in pop if not q.is_excluded(key)]
             lim = compute_limits(vals, "up", self.settings)
             lim.note = (lim.note + " | " if lim.note else "") + desc
             self._lim_cache[ck] = lim

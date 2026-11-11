@@ -1,0 +1,53 @@
+{
+  "name": "Koyu",
+  "dark": true,
+  "font_family": "Segoe UI, Inter, Roboto, Arial",
+  "font_size": "10pt",
+  "radius": "8px",
+  "radius_sm": "6px",
+
+  "bg": "#0b1120",
+  "surface": "#111827",
+  "surface_alt": "#0f172a",
+  "surface_hover": "#1f2937",
+  "border": "#1f2a3d",
+  "border_strong": "#334155",
+  "text": "#e2e8f0",
+  "text_muted": "#94a3b8",
+  "text_inverse": "#ffffff",
+
+  "primary": "#3b82f6",
+  "primary_hover": "#2563eb",
+  "primary_pressed": "#1d4ed8",
+  "primary_soft": "#1e3a8a",
+  "danger": "#ef4444",
+  "danger_hover": "#dc2626",
+
+  "sidebar": "#020617",
+  "sidebar_text": "#94a3b8",
+  "sidebar_text_active": "#f8fafc",
+  "sidebar_active": "#1e293b",
+  "sidebar_accent": "#38bdf8",
+
+  "input_bg": "#0f172a",
+  "selection": "#1e3a8a",
+  "selection_text": "#f8fafc",
+  "header_bg": "#0f172a",
+  "scrollbar": "#334155",
+
+  "status_ok": "#14532d",
+  "status_ok_fg": "#bbf7d0",
+  "status_warn": "#713f12",
+  "status_warn_fg": "#fde68a",
+  "status_alarm": "#7f1d1d",
+  "status_alarm_fg": "#fecaca",
+  "status_excluded_fg": "#64748b",
+
+  "chart_ok": "#22c55e",
+  "chart_warn": "#f59e0b",
+  "chart_alarm": "#ef4444",
+  "chart_na": "#64748b",
+  "chart_line": "#94a3b8",
+  "chart_band": "#22c55e",
+  "heatmap": "RdBu_r"
+}

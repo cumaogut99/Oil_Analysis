@@ -3,25 +3,37 @@ from __future__ import annotations
 
 import numpy as np
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QHBoxLayout, QLabel, QSplitter,
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QSplitter,
                                QVBoxLayout, QWidget)
 
 from ..parameters import CATEGORIES, PARTICLE
 from ..stats import correlation
-from .common import AppState, FilterBar, MplWidget
+from . import theme
+from .common import AppState, FilterBar, MplWidget, hint
 
 HOURS = {"_motor_hours": "Motor saati", "_oil_hours": "Yağ saati"}
 
 
 class CorrelationTab(QWidget):
+    title = "İlişkiler"
+    subtitle = "Parametreler arası korelasyon (istatistikten hariç tutulan değerler katılmaz)"
+    icon = "correlation"
+
     def __init__(self, state: AppState, parent=None):
         super().__init__(parent)
         self.state = state
         self.keys, self.r, self.n, self.cols = [], None, None, {}
         lay = QVBoxLayout(self)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(12)
+        card = QFrame()
+        card.setObjectName("Card")
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(14, 10, 14, 10)
         self.filters = FilterBar(state)
         self.filters.changed.connect(self.refresh)
-        lay.addWidget(self.filters)
+        cl.addWidget(self.filters)
+        lay.addWidget(card)
         opts = QHBoxLayout()
         opts.addWidget(QLabel("Yöntem:"))
         self.method = QComboBox()
@@ -41,16 +53,20 @@ class CorrelationTab(QWidget):
             opts.addWidget(cb)
             self.cat_checks[c] = cb
         opts.addStretch(1)
-        lay.addLayout(opts)
-        self.info = QLabel("Isı haritasında bir hücreye tıklayarak iki parametrenin dağılım grafiğini görün. "
+        cl.addLayout(opts)
+        self.info = hint("Isı haritasında bir hücreye tıklayarak iki parametrenin dağılım grafiğini görün. "
                            "|r| ≥ 0.7 güçlü, 0.4–0.7 orta ilişki. Korelasyon nedensellik göstermez.")
-        self.info.setWordWrap(True)
-        lay.addWidget(self.info)
+        cl.addWidget(self.info)
         split = QSplitter(Qt.Horizontal)
         self.heat = MplWidget()
         self.scatter = MplWidget()
-        split.addWidget(self.heat)
-        split.addWidget(self.scatter)
+        for wdg in (self.heat, self.scatter):
+            c = QFrame()
+            c.setObjectName("Card")
+            ll = QVBoxLayout(c)
+            ll.setContentsMargins(8, 8, 8, 8)
+            ll.addWidget(wdg)
+            split.addWidget(c)
         split.setSizes([800, 450])
         lay.addWidget(split, 1)
         self.heat.canvas.mpl_connect("button_press_event", self.on_click)
@@ -68,8 +84,8 @@ class CorrelationTab(QWidget):
         cats = {c for c, cb in self.cat_checks.items() if cb.isChecked()}
         cols = {}
         if not use_rate:
-            cols["_motor_hours"] = [s.motor_hours for s in samples]
-            cols["_oil_hours"] = [s.oil_hours for s in samples]
+            cols["_motor_hours"] = [None if s.stats_excluded else s.motor_hours for s in samples]
+            cols["_oil_hours"] = [None if s.stats_excluded else s.oil_hours for s in samples]
         ev = st.evaluator
         for p in st.params:
             if p.category not in cats:
@@ -77,23 +93,24 @@ class CorrelationTab(QWidget):
             if use_rate:
                 if p.key not in ev.rate_keys:
                     continue
-                vals = [ev.rates.get(s.id, {}).get(p.key) for s in samples]
+                vals = [None if s.is_excluded(p.key) else ev.rates.get(s.id, {}).get(p.key)
+                        for s in samples]
             else:
-                vals = [s.values.get(p.key) for s in samples]
+                vals = [s.stat_value(p.key) for s in samples]
             arr = [v for v in vals if v is not None]
             if len(arr) >= 5 and len(set(arr)) > 1:
                 cols[p.key] = vals
         self.cols = cols
         self.samples = samples
-        fig = self.heat.figure
-        fig.clear()
+        fig = self.heat.reset()
         if len(cols) < 2:
             self.r = None
             self.heat.draw()
             return
         self.keys, self.r, self.n = correlation(cols, self.method.currentData())
         ax = fig.add_subplot(111)
-        im = ax.imshow(self.r, cmap="RdBu_r", vmin=-1, vmax=1)
+        im = ax.imshow(self.r, cmap=theme.token("heatmap", "RdBu_r"), vmin=-1, vmax=1)
+        ax.grid(False)
         labels = [HOURS.get(k) or st.pmap[k].name.split(" (")[0] for k in self.keys]
         ax.set_xticks(range(len(labels)), labels, rotation=90, fontsize=7)
         ax.set_yticks(range(len(labels)), labels, fontsize=7)
@@ -111,8 +128,7 @@ class CorrelationTab(QWidget):
 
     def _draw_top_pairs(self):
         """En güçlü ilişkileri sağ panelde listeler."""
-        fig = self.scatter.figure
-        fig.clear()
+        fig = self.scatter.reset()
         ax = fig.add_subplot(111)
         ax.axis("off")
         pairs = []
@@ -141,8 +157,7 @@ class CorrelationTab(QWidget):
             return
         a, b = self.cols[self.keys[j]], self.cols[self.keys[i]]
         pts = [(x, y, s) for x, y, s in zip(a, b, self.samples) if x is not None and y is not None]
-        fig = self.scatter.figure
-        fig.clear()
+        fig = self.scatter.reset()
         ax = fig.add_subplot(111)
         motors = sorted({s.motor_no or "?" for _x, _y, s in pts})
         cmap = {m: i for i, m in enumerate(motors)}
@@ -154,9 +169,8 @@ class CorrelationTab(QWidget):
             if np.ptp(xs) > 0:
                 m, c = np.polyfit(xs, ys, 1)
                 xx = np.linspace(xs.min(), xs.max(), 50)
-                ax.plot(xx, m * xx + c, "--", color="#c62828", lw=1)
+                ax.plot(xx, m * xx + c, "--", color=theme.token("chart_alarm"), lw=1.2)
         ax.set_xlabel(self._name(j), fontsize=8)
         ax.set_ylabel(self._name(i), fontsize=8)
         ax.set_title(f"r = {self.r[i, j]:+.2f}  (n={self.n[i, j]}) — renk: motor", fontsize=9)
-        ax.grid(alpha=0.3)
         self.scatter.draw()

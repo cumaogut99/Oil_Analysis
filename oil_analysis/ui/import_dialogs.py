@@ -191,7 +191,7 @@ class PdfImportDialog(QDialog):
         lay.addLayout(opts)
 
         bb = QDialogButtonBox()
-        bb.addButton("Kaydet", QDialogButtonBox.AcceptRole)
+        bb.addButton("Kaydet", QDialogButtonBox.AcceptRole).setProperty("variant", "primary")
         bb.addButton("Bu dosyayı atla", QDialogButtonBox.RejectRole)
         bb.accepted.connect(self.save)
         bb.rejected.connect(self.reject)
@@ -281,6 +281,7 @@ class ExcelImportDialog(QDialog):
         lay.addWidget(self.c_over)
         bb = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
         bb.button(QDialogButtonBox.Ok).setText("İçe aktar")
+        bb.button(QDialogButtonBox.Ok).setProperty("variant", "primary")
         bb.button(QDialogButtonBox.Cancel).setText("Vazgeç")
         bb.accepted.connect(self.save)
         bb.rejected.connect(self.reject)

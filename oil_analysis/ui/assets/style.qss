@@ -1,0 +1,265 @@
+/* =====================================================================
+   Motor Yağı Analiz - uygulama stil şablonu
+   {{token}} alanları themes/<tema>.json dosyasından doldurulur.
+   {{icons}} : temaya göre renklendirilmiş ikon klasörü
+   ===================================================================== */
+
+* {
+    font-family: {{font_family}};
+    font-size: {{font_size}};
+    color: {{text}};
+    outline: 0;
+}
+
+QMainWindow, QDialog, #Content, QStackedWidget > QWidget {
+    background: {{bg}};
+}
+
+QToolTip {
+    background: {{surface}};
+    color: {{text}};
+    border: 1px solid {{border_strong}};
+    border-radius: {{radius_sm}};
+    padding: 6px 8px;
+}
+
+/* ------------------------------------------------------------ menü ---- */
+QMenuBar {
+    background: {{surface}};
+    border-bottom: 1px solid {{border}};
+    padding: 2px 6px;
+}
+QMenuBar::item { background: transparent; padding: 5px 10px; border-radius: {{radius_sm}}; }
+QMenuBar::item:selected { background: {{surface_hover}}; }
+QMenu {
+    background: {{surface}};
+    border: 1px solid {{border}};
+    border-radius: {{radius}};
+    padding: 6px;
+}
+QMenu::item { padding: 7px 26px 7px 12px; border-radius: {{radius_sm}}; }
+QMenu::item:selected { background: {{primary_soft}}; color: {{text}}; }
+QMenu::separator { height: 1px; background: {{border}}; margin: 5px 8px; }
+
+QStatusBar { background: {{surface}}; border-top: 1px solid {{border}}; color: {{text_muted}}; }
+QStatusBar QLabel { color: {{text_muted}}; }
+
+/* ------------------------------------------------------- kenar menü ---- */
+#Sidebar {
+    background: {{sidebar}};
+    border: none;
+}
+#Sidebar QLabel { color: {{sidebar_text}}; background: transparent; }
+#AppTitle {
+    color: {{sidebar_text_active}};
+    font-size: 13pt;
+    font-weight: 700;
+    padding: 4px 4px 0 4px;
+}
+#AppSubtitle { color: {{sidebar_text}}; font-size: 8.5pt; padding: 0 4px 12px 4px; }
+#Nav {
+    background: transparent;
+    border: none;
+}
+#Nav::item {
+    color: {{sidebar_text}};
+    padding: 10px 12px;
+    margin: 2px 0;
+    border-radius: {{radius}};
+    border-left: 3px solid transparent;
+}
+#Nav::item:hover { background: {{sidebar_active}}; color: {{sidebar_text_active}}; }
+#Nav::item:selected {
+    background: {{sidebar_active}};
+    color: {{sidebar_text_active}};
+    border-left: 3px solid {{sidebar_accent}};
+}
+#SidebarButton {
+    background: transparent;
+    color: {{sidebar_text}};
+    border: 1px solid {{sidebar_active}};
+    border-radius: {{radius}};
+    padding: 7px 10px;
+    text-align: left;
+}
+#SidebarButton:hover { background: {{sidebar_active}}; color: {{sidebar_text_active}}; }
+#DbLabel { color: {{sidebar_text}}; font-size: 8pt; }
+
+/* ------------------------------------------------------------ başlık ---- */
+#Header {
+    background: {{surface}};
+    border-bottom: 1px solid {{border}};
+}
+#PageTitle { font-size: 15pt; font-weight: 700; color: {{text}}; }
+#PageSubtitle { color: {{text_muted}}; font-size: 9pt; }
+
+/* ------------------------------------------------------------- kart ---- */
+#Card, QGroupBox {
+    background: {{surface}};
+    border: 1px solid {{border}};
+    border-radius: {{radius}};
+}
+QGroupBox {
+    margin-top: 14px;
+    padding: 14px 10px 10px 10px;
+    font-weight: 600;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    subcontrol-position: top left;
+    left: 12px;
+    padding: 0 6px;
+    color: {{text_muted}};
+    background: transparent;
+}
+#KpiCard {
+    background: {{surface}};
+    border: 1px solid {{border}};
+    border-radius: {{radius}};
+}
+#KpiCard[tone="ok"]    { border-left: 4px solid {{chart_ok}}; }
+#KpiCard[tone="warn"]  { border-left: 4px solid {{chart_warn}}; }
+#KpiCard[tone="alarm"] { border-left: 4px solid {{chart_alarm}}; }
+#KpiCard[tone="info"]  { border-left: 4px solid {{primary}}; }
+#KpiValue { font-size: 18pt; font-weight: 700; background: transparent; }
+#KpiCaption { color: {{text_muted}}; font-size: 8.5pt; background: transparent; }
+#Hint { color: {{text_muted}}; font-size: 9pt; }
+#SectionTitle { font-weight: 700; font-size: 10.5pt; }
+
+/* ---------------------------------------------------------- düğmeler ---- */
+QPushButton, QToolButton {
+    background: {{surface}};
+    border: 1px solid {{border_strong}};
+    border-radius: {{radius}};
+    padding: 6px 14px;
+    min-height: 18px;
+}
+QPushButton:hover, QToolButton:hover { background: {{surface_hover}}; }
+QPushButton:pressed { background: {{border}}; }
+QPushButton:disabled { color: {{text_muted}}; background: {{surface_alt}}; }
+QPushButton[variant="primary"] {
+    background: {{primary}};
+    color: {{text_inverse}};
+    border: 1px solid {{primary}};
+    font-weight: 600;
+}
+QPushButton[variant="primary"]:hover { background: {{primary_hover}}; border-color: {{primary_hover}}; }
+QPushButton[variant="primary"]:pressed { background: {{primary_pressed}}; }
+QPushButton[variant="danger"] { color: {{danger}}; border-color: {{danger}}; }
+QPushButton[variant="danger"]:hover { background: {{danger}}; color: {{text_inverse}}; }
+QPushButton[variant="ghost"] { background: transparent; border: 1px solid transparent; }
+QPushButton[variant="ghost"]:hover { background: {{surface_hover}}; }
+QDialogButtonBox QPushButton { min-width: 84px; }
+
+/* ----------------------------------------------------------- girdiler ---- */
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QTextEdit, QTextBrowser {
+    background: {{input_bg}};
+    border: 1px solid {{border_strong}};
+    border-radius: {{radius_sm}};
+    padding: 5px 8px;
+    selection-background-color: {{primary}};
+    selection-color: {{text_inverse}};
+}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus,
+QPlainTextEdit:focus, QTextEdit:focus {
+    border: 1px solid {{primary}};
+}
+QLineEdit:read-only, QPlainTextEdit[readOnly="true"], QTextEdit[readOnly="true"] {
+    background: {{surface_alt}};
+}
+QComboBox { padding-right: 26px; min-height: 18px; }
+QComboBox::drop-down {
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    width: 24px;
+    border: none;
+}
+QComboBox::down-arrow { image: url({{icons}}/chevron-down.svg); width: 14px; height: 14px; }
+QComboBox QAbstractItemView {
+    background: {{surface}};
+    border: 1px solid {{border}};
+    border-radius: {{radius_sm}};
+    padding: 4px;
+    selection-background-color: {{primary_soft}};
+    selection-color: {{text}};
+}
+QSpinBox::up-button, QDoubleSpinBox::up-button,
+QSpinBox::down-button, QDoubleSpinBox::down-button { width: 18px; border: none; background: transparent; }
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { image: url({{icons}}/chevron-up.svg); width: 10px; height: 10px; }
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { image: url({{icons}}/chevron-down.svg); width: 10px; height: 10px; }
+
+QCheckBox { spacing: 7px; background: transparent; }
+QCheckBox::indicator, QTableView::indicator, QListView::indicator {
+    width: 16px; height: 16px;
+    border: 1px solid {{border_strong}};
+    border-radius: 4px;
+    background: {{input_bg}};
+}
+QCheckBox::indicator:hover, QTableView::indicator:hover, QListView::indicator:hover { border-color: {{primary}}; }
+QCheckBox::indicator:checked, QTableView::indicator:checked, QListView::indicator:checked {
+    background: {{primary}};
+    border-color: {{primary}};
+    image: url({{icons_inverse}}/check.svg);
+}
+
+/* ---------------------------------------------------------- tablolar ---- */
+QTableView, QTableWidget, QListWidget, QTreeView {
+    background: {{surface}};
+    alternate-background-color: {{surface_alt}};
+    border: 1px solid {{border}};
+    border-radius: {{radius}};
+    gridline-color: {{border}};
+    selection-background-color: {{selection}};
+    selection-color: {{selection_text}};
+}
+/* Not: QTableView::item kuralı tanımlanmaz; tanımlanırsa Qt hücre bazlı durum
+   renklerini (Normal/Uyarı/Alarm) yok sayar. Seçim rengi yukarıdaki özelliklerden gelir. */
+QListWidget::item { padding: 4px 6px; border-radius: {{radius_sm}}; }
+QListWidget::item:selected { background: {{selection}}; color: {{selection_text}}; }
+QListWidget::item:hover { background: {{surface_hover}}; }
+QHeaderView::section {
+    background: {{header_bg}};
+    color: {{text_muted}};
+    font-weight: 600;
+    border: none;
+    border-bottom: 1px solid {{border}};
+    border-right: 1px solid {{border}};
+    padding: 7px 8px;
+}
+QHeaderView::section:last { border-right: none; }
+QTableCornerButton::section { background: {{header_bg}}; border: none; }
+
+/* ---------------------------------------------------------- sekmeler ---- */
+QTabWidget::pane {
+    border: 1px solid {{border}};
+    border-radius: {{radius}};
+    background: {{surface}};
+    top: -1px;
+}
+QTabBar::tab {
+    background: transparent;
+    color: {{text_muted}};
+    padding: 8px 16px;
+    border: none;
+    border-bottom: 2px solid transparent;
+    margin-right: 4px;
+}
+QTabBar::tab:selected { color: {{primary}}; border-bottom: 2px solid {{primary}}; font-weight: 600; }
+QTabBar::tab:hover { color: {{text}}; }
+
+/* ---------------------------------------------------------- kaydırma ---- */
+QScrollBar:vertical { background: transparent; width: 10px; margin: 2px; }
+QScrollBar:horizontal { background: transparent; height: 10px; margin: 2px; }
+QScrollBar::handle { background: {{scrollbar}}; border-radius: 4px; min-height: 30px; min-width: 30px; }
+QScrollBar::handle:hover { background: {{text_muted}}; }
+QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
+QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
+
+QSplitter::handle { background: transparent; }
+QSplitter::handle:hover { background: {{border}}; }
+
+/* matplotlib araç çubuğu */
+NavigationToolbar2QT { background: transparent; border: none; spacing: 2px; }
+NavigationToolbar2QT QToolButton { background: transparent; border: 1px solid transparent; padding: 3px; }
+NavigationToolbar2QT QToolButton:hover { background: {{surface_hover}}; border-color: {{border}}; }
+NavigationToolbar2QT QLabel { color: {{text_muted}}; }

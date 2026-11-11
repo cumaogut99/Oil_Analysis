@@ -2,57 +2,87 @@
 from __future__ import annotations
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QDialog, QDialogButtonBox,
-                               QFormLayout, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
-                               QLineEdit, QMessageBox, QPushButton, QSplitter, QTableWidget,
-                               QTableWidgetItem, QTextEdit, QVBoxLayout, QWidget)
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
+                               QFormLayout, QFrame, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
+                               QLineEdit, QMessageBox, QSplitter, QTableWidget, QTableWidgetItem,
+                               QTabWidget, QTextEdit, QVBoxLayout, QWidget)
 
-from ..db import PLATFORM_GROUPS, SAMPLE_TYPES, Sample
+from ..db import SAMPLE_TYPES, Sample
 from ..evaluation import STATUS_TEXT
+from ..parts import diagnose
 from ..textnorm import fmt_num, format_date
-from .common import STATUS_BG, AppState, FilterBar, ro_item
+from . import theme
+from .common import (AppState, FilterBar, KpiCard, button, hint, paint_status, ro_item,
+                     style_table)
 
 COLUMNS = ["Durum", "Analiz No", "Motor", "Platform", "Grup", "Numune Tipi", "Yağ",
            "Numune Tarihi", "Motor sa", "Yağ sa", "SGS Teşhisi", "Dikkat Gerektirenler",
-           "Değerlendirme Yorumu"]
+           "İst.", "Değerlendirme Yorumu"]
 
 
 class SamplesTab(QWidget):
+    title = "Numuneler"
+    subtitle = "Tüm analizler, değerlendirme durumu ve yorumlar"
+    icon = "samples"
+
     def __init__(self, state: AppState, parent=None):
         super().__init__(parent)
         self.state = state
         lay = QVBoxLayout(self)
+        lay.setContentsMargins(20, 16, 20, 16)
+        lay.setSpacing(12)
+
+        kpis = QHBoxLayout()
+        kpis.setSpacing(12)
+        self.k_total = KpiCard("Numune", "info")
+        self.k_motor = KpiCard("Motor", "info")
+        self.k_ok = KpiCard("Normal", "ok")
+        self.k_warn = KpiCard("Uyarı", "warn")
+        self.k_alarm = KpiCard("Alarm", "alarm")
+        for k in (self.k_total, self.k_motor, self.k_ok, self.k_warn, self.k_alarm):
+            kpis.addWidget(k, 1)
+        lay.addLayout(kpis)
+
+        card = QFrame()
+        card.setObjectName("Card")
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(14, 12, 14, 12)
         self.filters = FilterBar(state, with_motor=True, with_fresh=True)
         self.filters.changed.connect(self.refresh)
+        cl.addWidget(self.filters)
         top = QHBoxLayout()
-        top.addWidget(self.filters, 1)
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Ara (analiz no, motor, yorum)…")
+        self.search.setPlaceholderText("Ara: analiz no, motor, yorum…")
+        self.search.addAction(theme.icon("search"), QLineEdit.LeadingPosition)
+        self.search.setMinimumWidth(320)
         self.search.textChanged.connect(self.refresh)
         top.addWidget(self.search)
-        lay.addLayout(top)
+        top.addStretch(1)
+        cl.addLayout(top)
 
         self.table = QTableWidget(0, len(COLUMNS))
         self.table.setHorizontalHeaderLabels(COLUMNS)
+        style_table(self.table)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.table.setSortingEnabled(True)
-        self.table.verticalHeader().setVisible(False)
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.Interactive)
         self.table.horizontalHeader().setStretchLastSection(True)
         self.table.doubleClicked.connect(self.open_selected)
-        lay.addWidget(self.table, 1)
+        cl.addWidget(self.table, 1)
 
         bottom = QHBoxLayout()
-        self.info = QLabel()
+        self.info = hint("")
         bottom.addWidget(self.info, 1)
-        b_open = QPushButton("Detay / Değerlendir")
+        b_open = button("Detay / Değerlendir", "samples", "primary")
         b_open.clicked.connect(self.open_selected)
-        b_del = QPushButton("Sil")
+        b_del = button("Sil", "trash", "danger")
         b_del.clicked.connect(self.delete_selected)
         bottom.addWidget(b_open)
         bottom.addWidget(b_del)
-        lay.addLayout(bottom)
+        cl.addLayout(bottom)
+        lay.addWidget(card, 1)
         state.changed.connect(self.on_state_changed)
         self.refresh()
 
@@ -73,11 +103,20 @@ class SamplesTab(QWidget):
         counts = {0: 0, 1: 0, 2: 0}
         for i, s in enumerate(reversed(rows)):
             status, flagged = st.evaluator.overall(s)
-            if status in counts:
+            if status in counts and not s.is_fresh:
                 counts[status] += 1
+            if s.stats_excluded:
+                excl, excl_tip = "⊘ tümü", "Numune istatistiklerden tamamen hariç" + (
+                    f": {s.stats_note}" if s.stats_note else "")
+            elif s.excluded:
+                excl = f"⊘ {len(s.excluded)}"
+                excl_tip = "İstatistik dışı: " + ", ".join(
+                    st.pmap[k].name.split(" (")[0] if k in st.pmap else k for k in s.excluded)
+            else:
+                excl, excl_tip = "", None
             vals = [
                 ro_item("Sıfır Yağ" if s.is_fresh else STATUS_TEXT[status],
-                        -1 if status is None else status, status),
+                        -1 if status is None else status, None if s.is_fresh else status),
                 ro_item(s.sample_no),
                 ro_item(s.motor_no or ""),
                 ro_item(s.platform_code or ""),
@@ -91,17 +130,26 @@ class SamplesTab(QWidget):
                         tooltip=("SGS (analiz firması) teşhisi:\n" + (s.lab_comment or ""))
                         if (s.lab_comment or s.lab_diagnosis) else None),
                 ro_item(", ".join(flagged), len(flagged), tooltip="\n".join(flagged) or None),
+                ro_item(excl, len(s.excluded) + (100 if s.stats_excluded else 0), tooltip=excl_tip),
                 ro_item((s.user_comment or "").replace("\n", " ")),
             ]
             for c, it in enumerate(vals):
                 if c == 0:
                     it.setData(Qt.UserRole, s.id)
+                    it.setTextAlignment(Qt.AlignCenter)
                 self.table.setItem(i, c, it)
         self.table.setSortingEnabled(True)
         self.table.resizeColumnsToContents()
+        self.table.setColumnWidth(0, max(80, self.table.columnWidth(0)))
         self.table.setColumnWidth(11, min(self.table.columnWidth(11), 320))
-        self.info.setText(f"{len(rows)} numune  •  Normal: {counts[0]}  •  Uyarı: {counts[1]}"
-                          f"  •  Alarm: {counts[2]}")
+        motors = {s.motor_no for s in rows if s.motor_no}
+        self.k_total.set(sum(1 for s in rows if not s.is_fresh))
+        self.k_motor.set(len(motors))
+        self.k_ok.set(counts[0])
+        self.k_warn.set(counts[1])
+        self.k_alarm.set(counts[2])
+        self.info.setText(f"{len(rows)} kayıt listeleniyor. Çift tıklayarak detay, değerlendirme ve "
+                          "parça tahminini açın.")
 
     def _selected_ids(self):
         ids = []
@@ -131,20 +179,24 @@ class SamplesTab(QWidget):
 
 
 class SampleDialog(QDialog):
-    """Numune bilgileri, ölçümler, limitler, SGS yorumu ve kullanıcı değerlendirmesi."""
+    """Numune bilgileri, ölçümler, limitler, parça tahmini, SGS yorumu ve kullanıcı değerlendirmesi."""
+
+    EXCL_COL = 1
 
     def __init__(self, state: AppState, s: Sample, parent=None):
         super().__init__(parent)
         self.state, self.s = state, s
         self.setWindowTitle(f"Numune {s.sample_no}")
-        self.resize(1250, 800)
+        self.resize(1320, 820)
         lay = QVBoxLayout(self)
+        lay.setContentsMargins(16, 16, 16, 12)
         split = QSplitter(Qt.Horizontal)
         lay.addWidget(split, 1)
 
         # ----- sol: bilgiler ve yorumlar
         left = QWidget()
         ll = QVBoxLayout(left)
+        ll.setContentsMargins(0, 0, 8, 0)
         g = QGroupBox("Numune Bilgileri")
         form = QFormLayout(g)
         self.e_motor = QLineEdit(s.motor_no or "")
@@ -162,7 +214,8 @@ class SampleDialog(QDialog):
         self.e_date = QLineEdit(format_date(s.date_taken))
         self.e_mh = QLineEdit(fmt_num(s.motor_hours))
         self.e_oh = QLineEdit(fmt_num(s.oil_hours))
-        form.addRow("Analiz No:", QLabel(f"<b>{s.sample_no}</b>  ({s.origin or ''})"))
+        form.addRow("Analiz No:", QLabel(f"<b>{s.sample_no}</b>  <span style='color:gray'>"
+                                         f"{s.origin or ''}</span>"))
         form.addRow("Motor No:", self.e_motor)
         form.addRow("Platform:", self.e_platform)
         grp = state.platforms.get(s.platform_code or "", "") if s.platform_code else ""
@@ -174,6 +227,14 @@ class SampleDialog(QDialog):
         form.addRow("Yağ çalışma (sa):", self.e_oh)
         if s.lubricant:
             form.addRow("Yağ:", QLabel(s.lubricant))
+        self.c_sample_excl = QCheckBox("Bu numuneyi istatistiklerden tamamen hariç tut")
+        self.c_sample_excl.setChecked(s.stats_excluded)
+        self.c_sample_excl.setToolTip("Ortalama, min/max, limit ve korelasyon hesaplarına katılmaz; "
+                                      "kendisi yine değerlendirilir.")
+        form.addRow(self.c_sample_excl)
+        self.e_sample_note = QLineEdit(s.stats_note or "")
+        self.e_sample_note.setPlaceholderText("Hariç tutma nedeni (ör. numune kontamine)")
+        form.addRow("Neden:", self.e_sample_note)
         ll.addWidget(g)
 
         sg = QGroupBox("SGS (Analiz Firması) Değerlendirmesi — bilgi amaçlı")
@@ -184,10 +245,11 @@ class SampleDialog(QDialog):
         sl.addWidget(QLabel(f"SGS teşhisi: <b>{diag}</b>"))
         lab = QTextEdit(s.lab_comment or "")
         lab.setReadOnly(True)
-        lab.setMaximumHeight(110)
+        lab.setMaximumHeight(100)
         sl.addWidget(lab)
         if s.lab_info:
-            sl.addWidget(QLabel("; ".join(f"{k}: {v}" for k, v in s.lab_info.items())))
+            info = hint("; ".join(f"{k}: {v}" for k, v in s.lab_info.items()))
+            sl.addWidget(info)
         ll.addWidget(sg)
 
         ug = QGroupBox("Değerlendirme Yorumu (kullanıcı)")
@@ -197,32 +259,43 @@ class SampleDialog(QDialog):
         ll.addWidget(ug, 1)
         split.addWidget(left)
 
-        # ----- sağ: ölçümler
-        right = QWidget()
-        rl = QVBoxLayout(right)
-        pop, desc = state.evaluator.ref_population(s)
-        status, _ = state.evaluator.overall(s)
-        rl.addWidget(QLabel(f"Genel durum: <b>{STATUS_TEXT[status]}</b>   •   Referans grubu: {desc}"
-                            f"   •   Hız birimi: ppm / 100 sa yağ çalışması"))
-        heads = ["Parametre", "Değer", "Durum", "Uyarı limiti", "Alarm limiti", "Sıfır yağ",
-                 "Değişim %", "Artış hızı", "Hız uyarı/alarm", "Açıklama"]
-        self.table = QTableWidget(0, len(heads))
-        self.table.setHorizontalHeaderLabels(heads)
-        self.table.verticalHeader().setVisible(False)
-        self.table.horizontalHeader().setStretchLastSection(True)
-        rl.addWidget(self.table, 1)
-        rl.addWidget(QLabel("Not: 'Değer' sütunu düzenlenebilir (okuma hatası düzeltmek için). "
-                            "Boş bırakılan değer silinir."))
-        split.addWidget(right)
-        split.setSizes([380, 870])
-        self._fill_values()
+        # ----- sağ: ölçümler + parça tahmini
+        tabs = QTabWidget()
+        tabs.addTab(self._values_page(), theme.icon("stats"), "Ölçümler ve Limitler")
+        tabs.addTab(self._parts_page(), theme.icon("parts"), "Parça Tahmini")
+        split.addWidget(tabs)
+        split.setSizes([400, 920])
 
         bb = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Close)
         bb.button(QDialogButtonBox.Save).setText("Kaydet")
+        bb.button(QDialogButtonBox.Save).setProperty("variant", "primary")
         bb.button(QDialogButtonBox.Close).setText("Kapat")
         bb.accepted.connect(self.save)
         bb.rejected.connect(self.reject)
         lay.addWidget(bb)
+
+    # ------------------------------------------------------------ ölçümler
+    def _values_page(self):
+        st, s = self.state, self.s
+        w = QWidget()
+        rl = QVBoxLayout(w)
+        rl.setContentsMargins(10, 10, 10, 10)
+        _pop, desc = st.evaluator.ref_population(s)
+        status, _ = st.evaluator.overall(s)
+        rl.addWidget(QLabel(f"Genel durum: <b>{STATUS_TEXT[status]}</b>   •   Referans grubu: {desc}"
+                            f"   •   Hız: ppm / 100 sa yağ çalışması"))
+        heads = ["Parametre", "İst. hariç", "Değer", "Durum", "Uyarı limiti", "Alarm limiti",
+                 "Sıfır yağ", "Değişim %", "Artış hızı", "Hız uyarı/alarm", "Açıklama"]
+        self.table = QTableWidget(0, len(heads))
+        self.table.setHorizontalHeaderLabels(heads)
+        style_table(self.table)
+        self.table.horizontalHeader().setStretchLastSection(True)
+        rl.addWidget(self.table, 1)
+        rl.addWidget(hint("'Değer' düzenlenebilir (okuma hatası düzeltmek için; boş bırakılan değer silinir). "
+                          "'İst. hariç' işaretli değerler ortalama, min/max, limit ve korelasyon "
+                          "hesaplarına katılmaz; numunenin kendi değerlendirmesi yine yapılır."))
+        self._fill_values()
+        return w
 
     def _fill_values(self):
         st, s = self.state, self.s
@@ -235,6 +308,10 @@ class SampleDialog(QDialog):
             raw = s.raws.get(key)
             v = s.values.get(key)
             name = ro_item(st.param_label(key))
+            excl = QTableWidgetItem(s.excluded.get(key, "") if key in s.excluded else "")
+            excl.setFlags(Qt.ItemIsUserCheckable | Qt.ItemIsEnabled | Qt.ItemIsEditable)
+            excl.setCheckState(Qt.Checked if key in s.excluded else Qt.Unchecked)
+            excl.setToolTip("İşaretleyin ve isterseniz hücreye neden yazın")
             val = QTableWidgetItem(fmt_num(v, 3) if v is not None else (raw or ""))
             stt = e.status if e else None
             lim = e.limits if e else None
@@ -249,7 +326,7 @@ class SampleDialog(QDialog):
                 return "  ".join(parts)
 
             items = [
-                name, val,
+                name, excl, val,
                 ro_item(STATUS_TEXT.get(stt, "—"), status=stt),
                 ro_item(lim_txt(lim.lo_warn, lim.hi_warn) if lim else "",
                         tooltip=lim.note if lim else None),
@@ -263,20 +340,87 @@ class SampleDialog(QDialog):
                 ro_item("; ".join(e.reasons) if e else "",
                         tooltip="\n".join(e.reasons) if e and e.reasons else None),
             ]
-            if stt in STATUS_BG:
-                val.setBackground(STATUS_BG[stt])
+            if stt in (1, 2):
+                paint_status(val, stt)
+            if key in s.excluded or s.stats_excluded:
+                name.setForeground(QColor(theme.token("status_excluded_fg", "#94a3b8")))
+                name.setText(name.text() + "  ⊘")
+                name.setToolTip("İstatistik hesaplarına katılmıyor")
             for c, it in enumerate(items):
                 self.table.setItem(i, c, it)
         self.table.resizeColumnsToContents()
 
+    # ------------------------------------------------------- parça tahmini
+    def _parts_page(self):
+        st, s = self.state, self.s
+        w = QWidget()
+        lay = QVBoxLayout(w)
+        lay.setContentsMargins(10, 10, 10, 10)
+        changes, ranked = diagnose(s, st.evaluator, st.db.part_sources(), st.settings)
+        prev = st.evaluator.previous_sample(s)
+        lay.addWidget(hint(
+            f"Önceki numune: <b>{prev.sample_no if prev else '—'}</b>"
+            f"{' (' + format_date(prev.date_taken) + ')' if prev and prev.date_taken else ''}. "
+            f"Anlamlı değişim: önceki numuneye göre ≥ %{st.settings.get('change_rel', 50):g} ve "
+            f"≥ {st.settings.get('change_abs', 2):g} birim artış, veya uyarı/alarm. "
+            "Kaynak parçalar 'Malzeme Kaynakları' sayfasında tanımlanır."))
+
+        t1 = QLabel("Miktarı değişen / dikkat gerektiren malzemeler")
+        t1.setObjectName("SectionTitle")
+        lay.addWidget(t1)
+        ct = QTableWidget(len(changes), 7)
+        ct.setHorizontalHeaderLabels(["Malzeme", "Önceki", "Şimdi", "Δ", "Δ %", "Durum", "Olası kaynak parçalar"])
+        style_table(ct)
+        ct.horizontalHeader().setStretchLastSection(True)
+        for i, c in enumerate(changes):
+            parts = ", ".join(p["part"] for p in c.parts) or "— tanımlı kaynak yok"
+            cells = [ro_item(st.param_label(c.key), tooltip=c.reason), ro_item(fmt_num(c.prev)),
+                     ro_item(fmt_num(c.value)), ro_item(fmt_num(c.delta) if c.delta is not None else ""),
+                     ro_item(f"{c.pct:+.0f}" if c.pct is not None else ""),
+                     ro_item(STATUS_TEXT.get(c.status, "—"), status=c.status),
+                     ro_item(parts, tooltip="\n".join(f"{p['part']}: {p['note']}" if p["note"] else p["part"]
+                                                      for p in c.parts) or c.reason)]
+            for j, it in enumerate(cells):
+                ct.setItem(i, j, it)
+        ct.resizeColumnsToContents()
+        lay.addWidget(ct, 1)
+
+        t2 = QLabel("En olası kaynak parçalar (birden çok malzemenin işaret ettiği parça üstte)")
+        t2.setObjectName("SectionTitle")
+        lay.addWidget(t2)
+        pt = QTableWidget(len(ranked), 4)
+        pt.setHorizontalHeaderLabels(["Parça", "Puan", "İşaret eden malzemeler", "Notlar"])
+        style_table(pt)
+        pt.horizontalHeader().setStretchLastSection(True)
+        top = ranked[0].score if ranked else 1
+        for i, p in enumerate(ranked):
+            stt = 2 if p.score >= top and len(p.elements) > 1 else (1 if p.score >= 0.6 * top else None)
+            cells = [ro_item(p.part, status=stt), ro_item(f"{p.score:g}", p.score),
+                     ro_item(", ".join(p.elements)), ro_item("; ".join(dict.fromkeys(p.notes)))]
+            for j, it in enumerate(cells):
+                pt.setItem(i, j, it)
+        pt.resizeColumnsToContents()
+        lay.addWidget(pt, 1)
+        lay.addWidget(hint("Puan: alarm 3, uyarı 2, yalnızca artış 1 — malzeme başına toplanır. "
+                           "Bu bir ön tahmindir; kesin teşhis için muayene gerekir."))
+        if not changes:
+            lay.addWidget(hint("Bu numunede anlamlı değişim veya uyarı yok."))
+        return w
+
     def save(self):
         values = {}
+        excl_changes = []
         for i, key in enumerate(self._row_keys):
-            new = self.table.item(i, 1).text().strip()
+            new = self.table.item(i, 2).text().strip()
             old = self.s.values.get(key)
             old_txt = fmt_num(old, 3) if old is not None else (self.s.raws.get(key) or "")
             if new != old_txt:
                 values[key] = new
+            it = self.table.item(i, self.EXCL_COL)
+            want = it.checkState() == Qt.Checked
+            note = it.text().strip()
+            if want != (key in self.s.excluded) or (want and note != self.s.excluded.get(key, "")):
+                excl_changes.append((key, want, note))
         meta = {
             "platform_code": self.e_platform.currentText(),
             "sample_type": self.e_type.currentText(),
@@ -286,9 +430,11 @@ class SampleDialog(QDialog):
             "oil_hours": self.e_oh.text(),
             "user_comment": self.e_comment.toPlainText().strip() or None,
         }
-        self.state.db.update_sample(self.s.id, self.e_motor.text(), meta, values)
+        db = self.state.db
+        db.update_sample(self.s.id, self.e_motor.text(), meta, values)
+        for key, want, note in excl_changes:
+            db.set_excluded(self.s.id, key, want, note, commit=False)
+        db.commit()
+        db.set_sample_excluded(self.s.id, self.c_sample_excl.isChecked(), self.e_sample_note.text().strip())
         self.state.reload()
         self.accept()
-
-
-__all__ = ["SamplesTab", "SampleDialog", "PLATFORM_GROUPS"]

@@ -240,3 +240,84 @@ def test_evaluator(tmp_path):
     good = [s for s in ss if s.sample_no == "S001"][0]
     st, flagged = ev.overall(good)
     assert st == 0 and not flagged
+
+
+# ------------------------------------------------- hariç tutma / parça
+def _population(db, n=10):
+    db.save_sample("FRESH1", None, {"sample_type": FRESH_OIL, "oil_type": "0W40"},
+                   {"ca": 2500, "fe": 0, "cr": 0})
+    for i in range(n):
+        db.save_sample(f"S{i:03d}", "M1" if i < 5 else "M2",
+                       {"sample_type": "Saha", "oil_type": "0W40", "motor_hours": 100 + i * 10,
+                        "oil_hours": 10 + i * 10 if i < 5 else 10 + (i - 5) * 10,
+                        "date_taken": f"{i + 1:02d}/02/2026"},
+                       {"fe": 10 + i % 3, "cr": 1, "ca": 2450})
+
+
+def test_exclusion_affects_stats_not_values(tmp_path):
+    db = Database(tmp_path / "x.db")
+    _population(db)
+    db.save_sample("ABSURD", "M3", {"sample_type": "Saha", "oil_type": "0W40", "oil_hours": 50},
+                   {"fe": 5000})
+    ss = {s.sample_no: s for s in db.load_samples()}
+    sid = ss["ABSURD"].id
+    db.set_excluded(sid, "fe", True, "ölçüm hatası")
+    ss = {s.sample_no: s for s in db.load_samples()}
+    s = ss["ABSURD"]
+    assert s.values["fe"] == 5000 and s.stat_value("fe") is None
+    assert s.excluded["fe"] == "ölçüm hatası"
+    ev = Evaluator(list(ss.values()), db.parameters(), db.settings())
+    lim = ev.limits(s, "fe")
+    assert lim.hi_alarm < 20  # 5000 limitlere girmedi
+    assert ev.evaluate(s)["fe"].status == 2  # ama kendisi yine değerlendirildi
+    # üzerine yazınca hariç tutma korunur
+    db.save_sample("ABSURD", "M3", {"sample_type": "Saha", "oil_type": "0W40"}, {"fe": 4999},
+                   overwrite=True)
+    s = {x.sample_no: x for x in db.load_samples()}["ABSURD"]
+    assert "fe" in s.excluded and s.values["fe"] == 4999
+    # numunenin tamamı
+    db.set_excluded(sid, "fe", False)
+    db.set_sample_excluded(sid, True, "kontamine")
+    s = {x.sample_no: x for x in db.load_samples()}["ABSURD"]
+    assert s.stats_excluded and s.stat_value("fe") is None and not s.excluded
+
+
+def test_migration_from_v1(tmp_path):
+    import sqlite3
+    p = tmp_path / "old.db"
+    c = sqlite3.connect(p)
+    c.executescript("""CREATE TABLE measurements(sample_id INTEGER, param_key TEXT, value REAL, raw TEXT,
+                       PRIMARY KEY(sample_id, param_key));
+                       CREATE TABLE samples(id INTEGER PRIMARY KEY, sample_no TEXT UNIQUE NOT NULL,
+                       motor_id INTEGER, platform_code TEXT, sample_type TEXT, oil_type TEXT,
+                       lubricant TEXT, source TEXT, date_taken TEXT, date_received TEXT,
+                       date_analysis TEXT, date_diagnosis TEXT, motor_hours REAL, oil_hours REAL,
+                       topup REAL, lab_diagnosis TEXT, lab_diag_letter TEXT, lab_comment TEXT,
+                       lab_info TEXT, user_comment TEXT, origin TEXT, source_file TEXT, imported_at TEXT);
+                       INSERT INTO samples(id, sample_no) VALUES (1, 'OLD1');
+                       INSERT INTO measurements VALUES (1, 'fe', 12, '12');""")
+    c.commit()
+    c.close()
+    db = Database(p)
+    s = db.load_samples()[0]
+    assert s.values["fe"] == 12 and not s.excluded and not s.stats_excluded
+
+
+def test_parts_diagnosis(tmp_path):
+    from oil_analysis.parts import diagnose
+    db = Database(tmp_path / "p.db")
+    _population(db)
+    db.save_part_sources("fe", [{"part": "Segmanlar", "note": ""}, {"part": "Krank mili", "note": ""}])
+    db.save_part_sources("cr", [{"part": "segmanlar", "note": "krom kaplı"}])
+    db.save_sample("NEW", "M1", {"sample_type": "Saha", "oil_type": "0W40", "motor_hours": 200,
+                                 "oil_hours": 60, "date_taken": "01/03/2026"},
+                   {"fe": 40, "cr": 6, "ca": 2450})
+    ss = db.load_samples()
+    ev = Evaluator(ss, db.parameters(), db.settings())
+    s = [x for x in ss if x.sample_no == "NEW"][0]
+    changes, ranked = diagnose(s, ev, db.part_sources(), db.settings())
+    keys = [c.key for c in changes]
+    assert "fe" in keys and "cr" in keys and "ca" not in keys
+    fe = next(c for c in changes if c.key == "fe")
+    assert fe.prev is not None and fe.delta > 0
+    assert ranked[0].part == "Segmanlar" and set(ranked[0].elements) == {"Fe", "Cr"}

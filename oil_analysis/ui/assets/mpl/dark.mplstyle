@@ -1,0 +1,28 @@
+# Grafik stili - koyu tema
+figure.facecolor: 111827
+axes.facecolor: 111827
+axes.edgecolor: 334155
+axes.labelcolor: cbd5e1
+axes.titlecolor: f1f5f9
+axes.titleweight: semibold
+axes.titlesize: 10
+axes.labelsize: 9
+axes.grid: True
+axes.spines.top: False
+axes.spines.right: False
+axes.prop_cycle: cycler('color', ['60a5fa', 'fb923c', '34d399', 'fb7185', 'a78bfa', '38bdf8', 'facc15', '2dd4bf', 'f472b6', '94a3b8'])
+grid.color: 1f2a3d
+grid.linewidth: 0.8
+grid.alpha: 1.0
+xtick.color: 94a3b8
+ytick.color: 94a3b8
+xtick.labelsize: 8
+ytick.labelsize: 8
+text.color: e2e8f0
+legend.frameon: False
+legend.fontsize: 8
+lines.linewidth: 1.6
+lines.markersize: 5
+font.family: sans-serif
+font.sans-serif: Segoe UI, Inter, Roboto, DejaVu Sans, Arial
+savefig.facecolor: 111827

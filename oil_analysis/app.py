@@ -18,6 +18,10 @@ def main(argv=None):
     tr = QTranslator(app)
     if tr.load(QLocale("tr_TR"), "qtbase", "_", QLibraryInfo.path(QLibraryInfo.TranslationsPath)):
         app.installTranslator(tr)
+    from PySide6.QtCore import QSettings
+
+    from .ui import theme
+    theme.apply(app, QSettings("YagAnalizi", "MotorYagiAnaliz").value("theme", "light"))
     db_path = argv[1] if len(argv) > 1 and argv[1].endswith((".db", ".sqlite")) else None
     win = MainWindow(db_path)
     win.show()

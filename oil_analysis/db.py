@@ -10,7 +10,7 @@ from pathlib import Path
 from .parameters import BUILTIN_PARAMS, CATEGORIES, OTHER, ParamDef
 from .textnorm import normalize_label, parse_date, parse_number
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 SAMPLE_TYPES = ["Belirtilmemiş", "Rodaj", "Green", "Saha", "Sıfır Yağ", "Diğer"]
 FRESH_OIL = "Sıfır Yağ"
@@ -40,6 +40,9 @@ DEFAULT_SETTINGS = {
     "visc_limits": {"0W40": [12.5, 16.3], "5W30": [9.3, 12.5]},
     # Sabit (mutlak) limitler: key -> {lo_alarm, lo_warn, hi_warn, hi_alarm}
     "fixed_limits": {"glycol": {"hi_warn": 0.0}},
+    # Parça tahmini: önceki numuneye göre "anlamlı artış" eşikleri
+    "change_rel": 50.0,   # %
+    "change_abs": 2.0,    # birim (ppm)
 }
 
 _SCHEMA = """
@@ -65,6 +68,9 @@ CREATE TABLE IF NOT EXISTS measurements(
     PRIMARY KEY(sample_id, param_key));
 CREATE TABLE IF NOT EXISTS aliases(alias TEXT PRIMARY KEY, target TEXT NOT NULL);
 CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE IF NOT EXISTS part_sources(
+    id INTEGER PRIMARY KEY, param_key TEXT NOT NULL, part TEXT NOT NULL, note TEXT,
+    sort_order INTEGER DEFAULT 0);
 CREATE INDEX IF NOT EXISTS ix_samples_motor ON samples(motor_id);
 CREATE INDEX IF NOT EXISTS ix_meas_param ON measurements(param_key);
 """
@@ -102,10 +108,22 @@ class Sample:
     source_file: str | None = None
     values: dict = field(default_factory=dict)   # key -> float | None
     raws: dict = field(default_factory=dict)     # key -> ham metin
+    excluded: dict = field(default_factory=dict)  # key -> hariç tutma notu (istatistik dışı)
+    stats_excluded: bool = False                  # numunenin tamamı istatistik dışı
+    stats_note: str | None = None
 
     @property
     def is_fresh(self):
         return self.sample_type == FRESH_OIL
+
+    def is_excluded(self, key: str) -> bool:
+        return self.stats_excluded or key in self.excluded
+
+    def stat_value(self, key: str):
+        """İstatistik/limit hesabında kullanılacak değer (hariç tutulduysa None)."""
+        if self.is_excluded(key):
+            return None
+        return self.values.get(key)
 
     def sort_key(self):
         return (self.date_taken or "", self.motor_hours or 0, self.sample_no)
@@ -128,14 +146,73 @@ class Database:
     def _init(self):
         c = self.conn
         c.executescript(_SCHEMA)
+        self._migrate()
         if c.execute("SELECT COUNT(*) FROM schema_info").fetchone()[0] == 0:
             c.execute("INSERT INTO schema_info VALUES (?)", (SCHEMA_VERSION,))
+        else:
+            c.execute("UPDATE schema_info SET version=?", (SCHEMA_VERSION,))
         for i, p in enumerate(BUILTIN_PARAMS):
             c.execute("""INSERT INTO parameters(key,name,unit,category,direction,sort_order,builtin)
                          VALUES (?,?,?,?,?,?,1)
                          ON CONFLICT(key) DO UPDATE SET sort_order=excluded.sort_order""",
                       (p.key, p.name, p.unit, p.category, p.direction, i))
         c.commit()
+
+    def _columns(self, table):
+        return {r[1] for r in self.conn.execute(f"PRAGMA table_info({table})")}
+
+    def _migrate(self):
+        """Eski veritabanı dosyalarını yeni sürüme yükseltir (veri kaybı olmadan)."""
+        c = self.conn
+        mcols = self._columns("measurements")
+        if "excluded" not in mcols:
+            c.execute("ALTER TABLE measurements ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0")
+        if "exclude_note" not in mcols:
+            c.execute("ALTER TABLE measurements ADD COLUMN exclude_note TEXT")
+        scols = self._columns("samples")
+        if "stats_excluded" not in scols:
+            c.execute("ALTER TABLE samples ADD COLUMN stats_excluded INTEGER NOT NULL DEFAULT 0")
+        if "stats_note" not in scols:
+            c.execute("ALTER TABLE samples ADD COLUMN stats_note TEXT")
+
+    # ------------------------------------------------------- hariç tutma
+    def set_excluded(self, sid: int, key: str, excluded: bool, note: str | None = None,
+                     commit: bool = True):
+        self.conn.execute("UPDATE measurements SET excluded=?, exclude_note=? "
+                          "WHERE sample_id=? AND param_key=?",
+                          (1 if excluded else 0, (note or None) if excluded else None, sid, key))
+        if commit:
+            self.conn.commit()
+
+    def set_sample_excluded(self, sid: int, excluded: bool, note: str | None = None):
+        self.conn.execute("UPDATE samples SET stats_excluded=?, stats_note=? WHERE id=?",
+                          (1 if excluded else 0, (note or None) if excluded else None, sid))
+        self.conn.commit()
+
+    def clear_exclusions(self, key: str | None = None):
+        if key:
+            self.conn.execute("UPDATE measurements SET excluded=0, exclude_note=NULL WHERE param_key=?", (key,))
+        else:
+            self.conn.execute("UPDATE measurements SET excluded=0, exclude_note=NULL")
+            self.conn.execute("UPDATE samples SET stats_excluded=0, stats_note=NULL")
+        self.conn.commit()
+
+    # -------------------------------------------------- parça kaynakları
+    def part_sources(self) -> dict[str, list[dict]]:
+        out: dict[str, list[dict]] = {}
+        for r in self.conn.execute(
+                "SELECT param_key, part, note FROM part_sources ORDER BY param_key, sort_order, id"):
+            out.setdefault(r[0], []).append({"part": r[1], "note": r[2] or ""})
+        return out
+
+    def save_part_sources(self, key: str, rows: list[dict]):
+        self.conn.execute("DELETE FROM part_sources WHERE param_key=?", (key,))
+        for i, r in enumerate(rows):
+            part = (r.get("part") or "").strip()
+            if part:
+                self.conn.execute("INSERT INTO part_sources(param_key, part, note, sort_order) "
+                                  "VALUES (?,?,?,?)", (key, part, (r.get("note") or "").strip(), i))
+        self.conn.commit()
 
     # ------------------------------------------------------------ ayarlar
     def settings(self) -> dict:
@@ -278,6 +355,9 @@ class Database:
             sets = ", ".join(f"{k}=?" for k in SAMPLE_FIELDS)
             c.execute(f"UPDATE samples SET motor_id=?, {sets}, imported_at=? WHERE id=?",
                       [mid] + [rec[k] for k in SAMPLE_FIELDS] + [now, sid])
+            # üzerine yazarken kullanıcının hariç tutma kararlarını koru
+            kept = c.execute("SELECT param_key, exclude_note FROM measurements "
+                             "WHERE sample_id=? AND excluded=1", (sid,)).fetchall()
             c.execute("DELETE FROM measurements WHERE sample_id=?", (sid,))
             status = "updated"
         else:
@@ -288,6 +368,9 @@ class Database:
                 [sample_no, mid] + [rec[k] for k in SAMPLE_FIELDS] + [now]).lastrowid
             status = "inserted"
         self._write_values(sid, values)
+        if existing:
+            for key, note in kept:
+                self.set_excluded(sid, key, True, note, commit=False)
         if commit:
             c.commit()
         return status
@@ -301,8 +384,10 @@ class Database:
             raw_s = None if raw is None else str(raw).strip()
             if val is None and not raw_s:
                 continue
-            self.conn.execute("INSERT OR REPLACE INTO measurements VALUES (?,?,?,?)",
-                              (sid, key, val, raw_s))
+            self.conn.execute(
+                """INSERT INTO measurements(sample_id, param_key, value, raw) VALUES (?,?,?,?)
+                   ON CONFLICT(sample_id, param_key) DO UPDATE SET value=excluded.value, raw=excluded.raw""",
+                (sid, key, val, raw_s))
 
     def update_sample(self, sid: int, motor_no: str | None, meta: dict, values: dict | None = None):
         rec = dict(meta)
@@ -348,15 +433,19 @@ class Database:
             s = Sample(id=d["id"], sample_no=d["sample_no"], motor_no=d["motor_no"],
                        platform_group=plat.get(d["platform_code"] or "", UNSPECIFIED)
                        if d["platform_code"] else UNSPECIFIED,
-                       lab_info=info,
+                       lab_info=info, stats_excluded=bool(d.get("stats_excluded")),
+                       stats_note=d.get("stats_note"),
                        **{k: d[k] for k in SAMPLE_FIELDS if k != "lab_info"})
             s.sample_type = s.sample_type or UNSPECIFIED
             samples[s.id] = s
-        for r in self.conn.execute("SELECT sample_id, param_key, value, raw FROM measurements"):
+        for r in self.conn.execute(
+                "SELECT sample_id, param_key, value, raw, excluded, exclude_note FROM measurements"):
             s = samples.get(r[0])
             if s is not None:
                 s.values[r[1]] = r[2]
                 s.raws[r[1]] = r[3]
+                if r[4]:
+                    s.excluded[r[1]] = r[5] or ""
         return sorted(samples.values(), key=Sample.sort_key)
 
     def commit(self):
