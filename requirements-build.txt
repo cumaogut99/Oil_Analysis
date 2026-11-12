@@ -1,0 +1,8 @@
+# Exe oluşturma araçları (Python 3.8 ile test edildi)
+pyinstaller==6.22.3
+pyinstaller-hooks-contrib==2026.10
+altgraph==0.17.5
+setuptools==75.3.4
+# PyInstaller'ın Windows bağımlılıkları (çevrimdışı paket indirmede eksik kalmasın diye açıkça)
+pefile==2023.2.7
+pywin32-ctypes==0.2.3

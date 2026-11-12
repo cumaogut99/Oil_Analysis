@@ -1,3 +1,4 @@
+# Güncel Python (3.9+) için. Python 3.8 kullanıyorsanız requirements-py38.txt dosyasını kullanın.
 PySide6-Essentials>=6.6
 matplotlib>=3.8
 numpy>=1.26

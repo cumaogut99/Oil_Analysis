@@ -57,24 +57,45 @@ Yeni tema eklemek için `themes/` altına bir `.json` ve `mpl/` altına aynı ad
 ## Kurulum (geliştirme)
 
 ```bat
-python -m venv .venv
+py -3.8 -m venv .venv
 .venv\Scripts\activate
-pip install -r requirements.txt
+pip install -r requirements-py38.txt
 python run.py
 ```
 
-## Tek dosya .exe oluşturma
+## Tek dosya .exe oluşturma (Python 3.8)
+
+**`KURULUM_VE_EXE.bat` dosyasına çift tıklayın.** Betik sırasıyla şunları yapar:
+
+1. Python 3.8'i bulur (`py -3.8` veya `python`).
+2. Proje klasöründe ayrı bir sanal ortam (`build_env`) oluşturur; sistemdeki Python kurulumuna dokunmaz.
+3. Python 3.8 ile test edilmiş sabit sürümlü paketleri kurar (`requirements-py38.txt`, `requirements-build.txt`).
+4. PyInstaller ile **tek dosya, konsolsuz** `dist\YagAnalizi.exe` üretir. Tasarım dosyaları ve uygulama ikonu da pakete eklenir.
+5. Üretilen exe'yi `--selftest` ile pencere açmadan çalıştırıp doğrular: tema dosyaları, PDF okuma, Excel/grafik kütüphaneleri ve tüm sayfalar denenir. Sonuç `build\selftest.txt` dosyasına yazılır.
+
+Tüm çıktı `build\build_log.txt` dosyasına da kaydedilir. Oluşan exe tek başına çalışır; kopyalandığı bilgisayarda Python kurulu olması gerekmez.
+
+Notlar:
+- **Python 3.8 başka bir yerdeyse:** `.bat` dosyasındaki `set "PY38=..."` satırına `python.exe` yolunu yazın.
+- **Şirket ağında proxy varsa:** Betiği çalıştırmadan önce `set HTTPS_PROXY=http://kullanici:sifre@proxy:port` komutunu verin.
+- **Çift tıklamadan çalıştırmak için:** `py -3.8 build_exe.py` komutu aynı işi yapar.
+- **Virüs uyarısı:** Bazı antivirüs programları imzasız PyInstaller exe'lerini yanlışlıkla işaretleyebilir; gerekirse BT'den istisna isteyin.
+
+### İnternetsiz bilgisayarda exe oluşturma
+
+1. İnternete bağlı bir Windows bilgisayarda `PAKETLERI_INDIR.bat` dosyasını çalıştırın. Gerekli tüm paketler (yaklaşık 120 MB) `wheels\` klasörüne iner.
+2. Proje klasörünü, `wheels\` dahil, internetsiz bilgisayara kopyalayın.
+3. `KURULUM_VE_EXE.bat` dosyasını çalıştırın. Betik `wheels\` klasörünü görünce internete çıkmadan oradan kurar.
+
+### Elle (PyInstaller komutu)
 
 ```bat
-pip install pyinstaller
 pyinstaller --noconfirm --windowed --onefile --name YagAnalizi ^
-  --add-data "oil_analysis/ui/assets;oil_analysis/ui/assets" run.py
+  --add-data "oil_analysis/ui/assets;oil_analysis/ui/assets" ^
+  --collect-data pdfminer --collect-all pypdfium2 run.py
 ```
 
-`--add-data` satırı tasarım dosyalarını (tema, ikon, stil) exe'ye ekler; bu satır olmadan arayüz stilsiz açılır.
-
-Çıktı `dist\YagAnalizi.exe` olur. Açılışın daha hızlı olması için `--onefile` yerine
-`--onedir` kullanılabilir (klasör halinde dağıtılır).
+`--add-data` satırı tasarım dosyalarını exe'ye ekler; bu satır olmadan arayüz stilsiz açılır.
 
 ## Taranmış PDF'ler için OCR (opsiyonel)
 
@@ -88,7 +109,7 @@ Uygulama bu durumda OCR'a otomatik olarak geçer.
 ## Testler
 
 ```bash
-pip install pytest reportlab
+pip install pytest "reportlab<4"
 python -m pytest tests
 ```
 

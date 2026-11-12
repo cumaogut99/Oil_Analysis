@@ -1,0 +1,25 @@
+# Python 3.8 ile uyumlu, sabitlenmiş paket sürümleri (build_exe.py bunu kullanır)
+PySide6-Essentials==6.6.3.1
+matplotlib==3.7.5
+numpy==1.24.4
+pdfplumber==0.11.4
+pdfminer.six==20231228
+pypdfium2==4.30.0
+Pillow==10.4.0
+openpyxl==3.1.5
+et-xmlfile==1.1.0
+contourpy==1.1.1
+cycler==0.12.1
+fonttools==4.53.1
+kiwisolver==1.4.7
+packaging==24.1
+pyparsing==3.1.4
+python-dateutil==2.9.0.post0
+six==1.16.0
+importlib-resources==6.4.5
+zipp==3.20.2
+charset-normalizer==3.3.2
+cryptography==43.0.3
+cffi==1.17.1
+pycparser==2.22
+shiboken6==6.6.3.1

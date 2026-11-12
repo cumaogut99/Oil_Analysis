@@ -84,9 +84,9 @@ PAGES = [SamplesTab, TrendTab, StatsTab, CorrelationTab, PartsTab]
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, db_path: str | None = None):
+    def __init__(self, db_path: str | None = None, qsettings: QSettings | None = None):
         super().__init__()
-        self.qs = QSettings("YagAnalizi", "MotorYagiAnaliz")
+        self.qs = qsettings or QSettings("YagAnalizi", "MotorYagiAnaliz")
         path = db_path or self.qs.value("db_path") or default_db_path()
         self.state = AppState(Database(path))
         self.qs.setValue("db_path", path)
