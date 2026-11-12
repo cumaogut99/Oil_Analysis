@@ -16,6 +16,12 @@ SAMPLE_TYPES = ["Belirtilmemiş", "Rodaj", "Green", "Saha", "Sıfır Yağ", "Di�
 FRESH_OIL = "Sıfır Yağ"
 UNSPECIFIED = "Belirtilmemiş"
 PLATFORM_GROUPS = ["Belirtilmemiş", "Baykar", "TUSAŞ", "TEI"]
+# SGS rapor grafiğinin altındaki teşhis harfleri
+SGS_LETTERS = {"Y": "Yeşil", "T": "Turuncu", "K": "Kırmızı", "S": "Sarı"}
+
+
+def sgs_letter_text(letter) -> str | None:
+    return SGS_LETTERS.get(str(letter or "").strip().upper())
 
 DEFAULT_SETTINGS = {
     # İstatistiksel limit yöntemi: normal | lognormal | percentile
@@ -174,6 +180,10 @@ class Database:
             c.execute("ALTER TABLE samples ADD COLUMN stats_excluded INTEGER NOT NULL DEFAULT 0")
         if "stats_note" not in scols:
             c.execute("ALTER TABLE samples ADD COLUMN stats_note TEXT")
+        # Teşhis harfi olup rengi boş kalmış eski kayıtlar (ör. T = Turuncu)
+        for letter, text in SGS_LETTERS.items():
+            c.execute("UPDATE samples SET lab_diagnosis=? WHERE UPPER(TRIM(lab_diag_letter))=? "
+                      "AND (lab_diagnosis IS NULL OR lab_diagnosis='')", (text, letter))
 
     # ------------------------------------------------------- hariç tutma
     def set_excluded(self, sid: int, key: str, excluded: bool, note: str | None = None,
@@ -347,6 +357,8 @@ class Database:
         rec["sample_type"] = rec.get("sample_type") or UNSPECIFIED
         rec["platform_code"] = (rec.get("platform_code") or "").strip() or None
         rec["oil_type"] = (rec.get("oil_type") or "").strip().upper() or None
+        if not rec.get("lab_diagnosis"):
+            rec["lab_diagnosis"] = sgs_letter_text(rec.get("lab_diag_letter"))
         self.ensure_platform(rec["platform_code"])
         mid = self.motor_id(motor_no)
         now = _dt.datetime.now().isoformat(timespec="seconds")

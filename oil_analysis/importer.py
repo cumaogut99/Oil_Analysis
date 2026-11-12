@@ -3,12 +3,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from .db import FRESH_OIL, UNSPECIFIED, Database
+from .db import FRESH_OIL, UNSPECIFIED, Database, sgs_letter_text
 from .excel_importer import SheetResult
 from .pdf_parser import ParsedReport, ParsedSample, lab_info_json
-from .textnorm import fold
 
-_LETTER_TEXT = {"y": "Yeşil", "k": "Kırmızı", "s": "Sarı"}
 
 
 def _txt(v):
@@ -62,7 +60,7 @@ def save_report(db: Database, report: ParsedReport, *, motor_no: str, platform_c
             "oil_hours": m.get("oil_hours"),
             "topup": m.get("topup"),
             "lab_diag_letter": m.get("lab_diag_letter"),
-            "lab_diagnosis": _LETTER_TEXT.get(fold(m.get("lab_diag_letter") or "")),
+            "lab_diagnosis": sgs_letter_text(m.get("lab_diag_letter")),
             "origin": "pdf" if is_main else "pdf-geçmiş",
             "source_file": Path(report.file).name,
         }

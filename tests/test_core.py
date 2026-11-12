@@ -321,3 +321,22 @@ def test_parts_diagnosis(tmp_path):
     fe = next(c for c in changes if c.key == "fe")
     assert fe.prev is not None and fe.delta > 0
     assert ranked[0].part == "Segmanlar" and set(ranked[0].elements) == {"Fe", "Cr"}
+
+
+def test_sgs_letter_mapping(tmp_path):
+    import sqlite3
+    db = Database(tmp_path / "s.db")
+    db.save_sample("A1", "M1", {"lab_diag_letter": "T"}, {"fe": 1})
+    db.save_sample("A2", "M1", {"lab_diag_letter": "k"}, {"fe": 1})
+    db.save_sample("A3", "M1", {"lab_diag_letter": "T", "lab_diagnosis": "Yeşil"}, {"fe": 1})
+    ss = {s.sample_no: s for s in db.load_samples()}
+    assert ss["A1"].lab_diagnosis == "Turuncu"
+    assert ss["A2"].lab_diagnosis == "Kırmızı"
+    assert ss["A3"].lab_diagnosis == "Yeşil"  # raporun kendi teşhisi önceliklidir
+    # eski kayıtların açılışta düzeltilmesi
+    db.conn.execute("UPDATE samples SET lab_diagnosis=NULL WHERE sample_no='A1'")
+    db.commit()
+    db.close()
+    db = Database(tmp_path / "s.db")
+    assert {s.sample_no: s for s in db.load_samples()}["A1"].lab_diagnosis == "Turuncu"
+    assert sqlite3  # noqa

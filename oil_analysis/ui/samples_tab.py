@@ -16,6 +16,9 @@ from . import theme
 from .common import (AppState, FilterBar, KpiCard, button, hint, paint_status, ro_item,
                      style_table)
 
+# SGS teşhis rengi -> tablo renklendirmesi (yalnızca görsel; değerlendirmeye katılmaz)
+SGS_STATUS = {"Yeşil": 0, "Sarı": 1, "Turuncu": 1, "Kırmızı": 2}
+
 COLUMNS = ["Durum", "Analiz No", "Motor", "Platform", "Grup", "Numune Tipi", "Yağ",
            "Numune Tarihi", "Motor sa", "Yağ sa", "SGS Teşhisi", "Dikkat Gerektirenler",
            "İst.", "Değerlendirme Yorumu"]
@@ -127,6 +130,7 @@ class SamplesTab(QWidget):
                 ro_item(fmt_num(s.motor_hours), s.motor_hours),
                 ro_item(fmt_num(s.oil_hours), s.oil_hours),
                 ro_item(s.lab_diagnosis or s.lab_diag_letter or "",
+                        status=SGS_STATUS.get(s.lab_diagnosis),
                         tooltip=("SGS (analiz firması) teşhisi:\n" + (s.lab_comment or ""))
                         if (s.lab_comment or s.lab_diagnosis) else None),
                 ro_item(", ".join(flagged), len(flagged), tooltip="\n".join(flagged) or None),
