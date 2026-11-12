@@ -93,7 +93,7 @@ class StatsTab(QWidget):
         self.p_title.setObjectName("SectionTitle")
         pl.addWidget(self.p_title)
         pl.addWidget(hint("Absürt değerleri işaretleyerek istatistik dışı bırakın. Hariç tutulan "
-                          "değerler ortalama, min/max, limit, hız ve korelasyon hesaplarına katılmaz. "
+                          "değerler ortalama, min/max, limit ve hız hesaplarına katılmaz. "
                           f"Dayanıklı z > {ROBUST_Z:g} olanlar 'uç değer adayı' olarak vurgulanır."))
         self.plot = MplWidget(toolbar=False)
         self.plot.setMinimumHeight(150)

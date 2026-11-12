@@ -9,7 +9,7 @@ from oil_analysis.excel_importer import default_type_for_sheet, read_workbook
 from oil_analysis.importer import apply_mappings, save_excel, save_report
 from oil_analysis.parameters import LabelMatcher
 from oil_analysis.pdf_parser import parse_pdf
-from oil_analysis.stats import classify, compute_limits, correlation
+from oil_analysis.stats import classify, compute_limits
 from oil_analysis.textnorm import normalize_label, parse_date, parse_number
 from sample_pdf import make_report
 
@@ -208,14 +208,6 @@ def test_limits_and_classify():
     assert not few.valid and "Yetersiz" in few.note
 
 
-def test_correlation():
-    keys, r, n = correlation({"a": [1, 2, 3, 4, 5, None], "b": [2, 4, 6, 8, 10, 1],
-                              "c": [5, 4, 3, 2, 1, 0]}, "spearman")
-    assert r[0, 1] == pytest.approx(1.0)
-    assert r[0, 2] == pytest.approx(-1.0)
-    assert n[0, 1] == 5
-
-
 def test_evaluator(tmp_path):
     db = Database(tmp_path / "e.db")
     db.save_sample("FRESH1", None, {"sample_type": FRESH_OIL, "oil_type": "0W40"},
@@ -340,3 +332,44 @@ def test_sgs_letter_mapping(tmp_path):
     db = Database(tmp_path / "s.db")
     assert {s.sample_no: s for s in db.load_samples()}["A1"].lab_diagnosis == "Turuncu"
     assert sqlite3  # noqa
+
+
+# ---------------------------------------------------------------- rapor
+@pytest.mark.parametrize("fmt", ["pdf", "docx"])
+def test_report_export(tmp_path, fmt):
+    from oil_analysis.report import SECTIONS, ReportOptions, build_report
+    from oil_analysis.report.model import Heading
+    db = Database(tmp_path / "r.db")
+    _population(db)
+    db.save_sample("BAD", "M1", {"sample_type": "Saha", "oil_type": "0W40", "motor_hours": 300,
+                                 "oil_hours": 70, "date_taken": "01/04/2026"}, {"fe": 90, "cr": 8})
+    db.save_part_sources("fe", [{"part": "Segmanlar", "note": ""}])
+    s = {x.sample_no: x for x in db.load_samples()}["BAD"]
+    db.update_sample(s.id, "M1", {"user_comment": "Fe artışı, takip edilecek"})
+    ss = db.load_samples()
+    ev = Evaluator(ss, db.parameters(), db.settings())
+    opts = ReportOptions(title="Test Raporu ğüşİıÖç", subtitle="alt", author="Test",
+                         sections=[k for k, _t, _d in SECTIONS], trend_keys=["fe", "cr"])
+    rep = build_report(ss, db.parameters(), db.settings(), ev, db.part_sources(), opts)
+    titles = [b.text for b in rep.blocks if isinstance(b, Heading) and b.level == 1]
+    assert titles == [t for _k, t, _d in SECTIONS]
+    path = str(tmp_path / f"r.{fmt}")
+    if fmt == "pdf":
+        from oil_analysis.report.pdf_writer import write_pdf
+        write_pdf(rep, path)
+        import pdfplumber
+        with pdfplumber.open(path) as pdf:
+            text = "\n".join(p.extract_text() or "" for p in pdf.pages)
+        assert "İçindekiler" in text and "Test Raporu ğüşİıÖç" in text
+        assert "Fe artışı, takip edilecek" in text and "Segmanlar" in text
+    else:
+        from oil_analysis.report.docx_writer import write_docx
+        write_docx(rep, path)
+        import docx
+        d = docx.Document(path)
+        body = "\n".join(p.text for p in d.paragraphs)
+        assert "İçindekiler" in body and "Test Raporu ğüşİıÖç" in body
+        heads = [p.text for p in d.paragraphs if p.style.name.startswith("Heading 1")]
+        assert heads == [t for _k, t, _d in SECTIONS]
+        assert 'TOC \\o' in d.element.xml
+        assert len(d.inline_shapes) == 2  # fe ve cr trend grafikleri

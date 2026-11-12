@@ -147,6 +147,8 @@ def build(py):
            "--specpath", BUILD,
            "--add-data", assets + os.pathsep + "oil_analysis/ui/assets",
            "--collect-data", "pdfminer",
+           "--collect-data", "docx",
+           "--collect-data", "reportlab",
            "--collect-all", "pypdfium2",
            "--hidden-import", "PySide6.QtSvg",
            "--exclude-module", "tkinter", "--exclude-module", "PyQt5",

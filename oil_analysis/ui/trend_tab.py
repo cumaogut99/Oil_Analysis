@@ -7,7 +7,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QFrame, QLabel, QListWidget,
                                QListWidgetItem, QSplitter, QVBoxLayout, QWidget)
 
+from ..evaluation import STATUS_TEXT
+from ..textnorm import fmt_num, format_date
 from . import theme
+from .chart_hover import ChartHover
 from .common import AppState, FilterBar, MplWidget, hint
 
 ALL_MOTORS = "— Tüm motorlar (filtreye göre) —"
@@ -62,14 +65,17 @@ class TrendTab(QWidget):
         self.plist = QListWidget()
         self.plist.itemChanged.connect(self.redraw)
         ll.addWidget(self.plist, 1)
-        ll.addWidget(hint("Nokta rengi: yeşil normal, turuncu uyarı, kırmızı alarm. "
-                          "✕ işaretli noktalar istatistikten hariç tutulmuştur."))
+        ll.addWidget(hint("Bir noktanın üzerine gelince motor, numune ve değer bilgisi görünür; "
+                          "tüm motorlar görünümünde o motorun çizgisi vurgulanır. Tek motorda nokta "
+                          "rengi durumu gösterir (yeşil/turuncu/kırmızı); tüm motorlarda uyarı/alarm "
+                          "noktaları renkli halkalıdır. ✕: istatistikten hariç."))
         split.addWidget(left)
         pcard = QFrame()
         pcard.setObjectName("Card")
         pl = QVBoxLayout(pcard)
         pl.setContentsMargins(8, 8, 8, 8)
         self.plot = MplWidget()
+        self.hover = ChartHover(self.plot.canvas)
         pl.addWidget(self.plot)
         split.addWidget(pcard)
         split.setSizes([260, 1000])
@@ -111,9 +117,30 @@ class TrendTab(QWidget):
                 return None
         return v
 
+    def _tip(self, s, key, y, status, excluded, use_rate, reasons):
+        st = self.state
+        p = st.pmap.get(key)
+        unit = "ppm/100 sa" if use_rate else (p.unit if p else "")
+        col = theme.chart_status(status)
+        lines = [f"<b style='font-size:11pt'>{s.motor_no or '—'}</b>",
+                 f"Numune: <b>{s.sample_no}</b> &nbsp;({s.sample_type})",
+                 f"Tarih: {format_date(s.date_taken) or '—'}",
+                 f"Motor sa: {fmt_num(s.motor_hours) or '—'} &nbsp; Yağ sa: {fmt_num(s.oil_hours) or '—'}",
+                 f"{st.param_label(key).split(' [')[0]}{' hızı' if use_rate else ''}: "
+                 f"<b>{fmt_num(y, 3)}</b> {unit}",
+                 f"Durum: <b style='color:{col}'>{STATUS_TEXT.get(status, '—')}</b>"]
+        if s.platform_code:
+            lines.insert(1, f"Platform: {s.platform_code}")
+        if excluded:
+            lines.append("<i>İstatistikten hariç</i>")
+        if reasons:
+            lines.append("<span style='font-size:8pt'>" + "<br>".join(reasons[:3]) + "</span>")
+        return "<br>".join(lines)
+
     def redraw(self, *_):
         st = self.state
         fig = self.plot.reset()
+        self.hover.clear()
         keys = self._checked_keys()[:8]
         if not keys:
             self.plot.draw()
@@ -141,8 +168,11 @@ class TrendTab(QWidget):
                 if y is None or x is None:
                     continue
                 stt = ev.evaluate(s).get(key)
+                status = stt.status if stt else None
+                tip = self._tip(s, key, y, status, s.is_excluded(key), use_rate,
+                                stt.reasons if stt else [])
                 groups.setdefault(s.motor_no or "?", []).append(
-                    (x, y, stt.status if stt else None, s, s.is_excluded(key)))
+                    (x, y, status, s, s.is_excluded(key), tip))
             for mno, pts in groups.items():
                 pts.sort(key=lambda t: t[0])
                 xs, ys = [t[0] for t in pts], [t[1] for t in pts]
@@ -150,18 +180,28 @@ class TrendTab(QWidget):
                 exc = [t for t in pts if t[4]]
                 if single:
                     ax.plot(xs, ys, "-", color=theme.token("chart_line"), lw=1.4, zorder=1, alpha=0.8)
-                    ax.scatter([t[0] for t in inc], [t[1] for t in inc],
-                               c=[theme.chart_status(t[2]) for t in inc], s=42, zorder=2,
-                               edgecolors=theme.token("surface"), linewidths=1.0)
-                    for x, y, _st, s, _e in pts:
+                    sc = ax.scatter([t[0] for t in inc], [t[1] for t in inc],
+                                    c=[theme.chart_status(t[2]) for t in inc], s=42, zorder=2,
+                                    edgecolors=theme.token("surface"), linewidths=1.0)
+                    self.hover.add_points(sc, [t[5] for t in inc], [mno] * len(inc))
+                    for x, y, _st, s, _e, _t in pts:
                         ax.annotate(s.sample_no[-3:], (x, y), fontsize=6, xytext=(3, 4),
                                     textcoords="offset points", color=theme.token("text_muted"))
                 else:
-                    ax.plot([t[0] for t in inc], [t[1] for t in inc], "-o", ms=3, lw=0.9,
-                            alpha=0.8, label=mno)
+                    (line,) = ax.plot([t[0] for t in inc], [t[1] for t in inc], "-", lw=1.0,
+                                      alpha=0.75, label=mno, zorder=2)
+                    self.hover.add_line(mno, line)
+                    if inc:
+                        edge = [theme.chart_status(t[2]) if t[2] in (1, 2) else theme.token("surface")
+                                for t in inc]
+                        sc = ax.scatter([t[0] for t in inc], [t[1] for t in inc], s=[46 if t[2] in (1, 2)
+                                        else 18 for t in inc], color=line.get_color(), edgecolors=edge,
+                                        linewidths=[1.8 if t[2] in (1, 2) else 0.6 for t in inc], zorder=3)
+                        self.hover.add_points(sc, [t[5] for t in inc], [mno] * len(inc))
                 if exc:
-                    ax.scatter([t[0] for t in exc], [t[1] for t in exc], marker="x", s=40,
-                               color=theme.token("chart_na"), zorder=3, linewidths=1.4)
+                    sx = ax.scatter([t[0] for t in exc], [t[1] for t in exc], marker="x", s=40,
+                                    color=theme.token("chart_na"), zorder=3, linewidths=1.4)
+                    self.hover.add_points(sx, [t[5] for t in exc], [mno] * len(exc))
             # Limit çizgileri: referans grubu, son numuneye göre
             if self.c_lim.isChecked() and samples:
                 ref = samples[-1] if single else next((s for s in reversed(samples) if not s.is_fresh), None)
@@ -179,7 +219,7 @@ class TrendTab(QWidget):
             if p is not None and p.unit and not use_rate:
                 ax.set_ylabel(p.unit, fontsize=8)
             ax.tick_params(labelsize=7)
-            if not single and idx == 0 and 1 < len(groups) <= 15:
+            if not single and idx == 0 and 1 < len(groups) <= 8:
                 ax.legend(fontsize=6, ncol=2)
         for idx in range(len(keys), nrows * ncols):
             axes[idx // ncols][idx % ncols].set_visible(False)

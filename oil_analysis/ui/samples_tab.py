@@ -5,7 +5,8 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QComboBox, QDialog, QDialogButtonBox,
                                QFormLayout, QFrame, QGroupBox, QHBoxLayout, QHeaderView, QLabel,
-                               QLineEdit, QMessageBox, QSplitter, QTableWidget, QTableWidgetItem,
+                               QLineEdit, QMessageBox, QPushButton, QSizePolicy, QSplitter, QTableWidget,
+                               QTableWidgetItem,
                                QTabWidget, QTextEdit, QVBoxLayout, QWidget)
 
 from ..db import SAMPLE_TYPES, Sample
@@ -15,13 +16,17 @@ from ..textnorm import fmt_num, format_date
 from . import theme
 from .common import (AppState, FilterBar, KpiCard, button, hint, paint_status, ro_item,
                      style_table)
+from .param_picker import ParamPicker
 
 # SGS teşhis rengi -> tablo renklendirmesi (yalnızca görsel; değerlendirmeye katılmaz)
 SGS_STATUS = {"Yeşil": 0, "Sarı": 1, "Turuncu": 1, "Kırmızı": 2}
 
-COLUMNS = ["Durum", "Analiz No", "Motor", "Platform", "Grup", "Numune Tipi", "Yağ",
-           "Numune Tarihi", "Motor sa", "Yağ sa", "SGS Teşhisi", "Dikkat Gerektirenler",
-           "İst.", "Değerlendirme Yorumu"]
+BASE_COLUMNS = ["Durum", "Analiz No", "Motor"]
+TAIL_COLUMNS = ["Numune Tarihi", "Motor sa", "Yağ sa", "Platform", "Grup", "Numune Tipi", "Yağ",
+                "SGS Teşhisi", "Dikkat Gerektirenler", "İst.", "Değerlendirme Yorumu"]
+SHOW_MODES = ["Tüm numuneler", "Seçili parametrelerde uyarı veya alarm olanlar",
+              "Seçili parametrelerde alarm olanlar"]
+MAX_PARAM_COLS = 30
 
 
 class SamplesTab(QWidget):
@@ -54,18 +59,38 @@ class SamplesTab(QWidget):
         self.filters = FilterBar(state, with_motor=True, with_fresh=True)
         self.filters.changed.connect(self.refresh)
         cl.addWidget(self.filters)
-        top = QHBoxLayout()
+
+        # parametre odaklı görünüm
+        prow = QHBoxLayout()
+        prow.setSpacing(8)
+        self.picker = ParamPicker(state, allow_auto=True, default_auto=True)
+        self.picker.changed.connect(self.refresh)
+        prow.addWidget(self.picker)
+        prow.addSpacing(6)
+        prow.addWidget(QLabel("Göster:"))
+        self.show_mode = QComboBox()
+        self.show_mode.addItems(SHOW_MODES)
+        self.show_mode.currentIndexChanged.connect(self.refresh)
+        prow.addWidget(self.show_mode)
+        self.c_cols = QCheckBox("Parametre değerlerini sütun olarak göster")
+        self.c_cols.setChecked(True)
+        self.c_cols.toggled.connect(self.refresh)
+        prow.addWidget(self.c_cols)
+        prow.addStretch(1)
         self.search = QLineEdit()
         self.search.setPlaceholderText("Ara: analiz no, motor, yorum…")
         self.search.addAction(theme.icon("search"), QLineEdit.LeadingPosition)
-        self.search.setMinimumWidth(320)
+        self.search.setMinimumWidth(280)
         self.search.textChanged.connect(self.refresh)
-        top.addWidget(self.search)
-        top.addStretch(1)
-        cl.addLayout(top)
+        prow.addWidget(self.search)
+        cl.addLayout(prow)
 
-        self.table = QTableWidget(0, len(COLUMNS))
-        self.table.setHorizontalHeaderLabels(COLUMNS)
+        # en sık uyarı/alarm veren parametreler: tek tık filtre
+        self.chips_row = QHBoxLayout()
+        self.chips_row.setSpacing(6)
+        cl.addLayout(self.chips_row)
+
+        self.table = QTableWidget(0, 0)
         style_table(self.table)
         self.table.setSelectionBehavior(QAbstractItemView.SelectRows)
         self.table.setEditTriggers(QAbstractItemView.NoEditTriggers)
@@ -91,23 +116,116 @@ class SamplesTab(QWidget):
 
     def on_state_changed(self):
         self.filters.refresh_options()
+        self.picker.reload()
         self.refresh()
 
+    # ------------------------------------------------------------ yardımcı
+    def _flagged(self, s, thr=1):
+        """Numunede durumu >= thr olan parametre anahtarları."""
+        return [k for k, e in self.state.evaluator.evaluate(s).items() if e.status is not None and e.status >= thr]
+
+    def _rebuild_chips(self, rows):
+        while self.chips_row.count():
+            it = self.chips_row.takeAt(0)
+            if it.widget():
+                it.widget().hide()
+                it.widget().setParent(None)
+                it.widget().deleteLater()
+        counts = {}
+        for s in rows:
+            if s.is_fresh:
+                continue
+            for k in self._flagged(s):
+                counts[k] = counts.get(k, 0) + 1
+        if not counts:
+            return
+        lab = QLabel("Sık uyarı/alarm:")
+        lab.setObjectName("Hint")
+        self.chips_row.addWidget(lab)
+        sel = set(self.picker.keys) if not self.picker.auto else set()
+        for k, n in sorted(counts.items(), key=lambda t: -t[1])[:10]:
+            name = self.state.pmap[k].name.split(" (")[0] if k in self.state.pmap else k
+            b = QPushButton(f"{name}  {n}")
+            b.setProperty("variant", "chip")
+            b.setCheckable(True)
+            b.setChecked(sel == {k})
+            b.setCursor(Qt.PointingHandCursor)
+            b.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+            b.setMinimumWidth(b.sizeHint().width() + 8)
+            b.setToolTip(f"Yalnızca {name} için uyarı/alarm veren numuneleri göster (tekrar tıklayınca kaldırılır)")
+            b.clicked.connect(lambda _c=False, key=k: self._chip(key))
+            self.chips_row.addWidget(b)
+        self.chips_row.addStretch(1)
+
+    def _chip(self, key):
+        if not self.picker.auto and self.picker.keys == [key]:
+            self.show_mode.blockSignals(True)
+            self.show_mode.setCurrentIndex(0)
+            self.show_mode.blockSignals(False)
+            self.picker.set_auto()
+            return
+        self.show_mode.blockSignals(True)
+        if self.show_mode.currentIndex() == 0:
+            self.show_mode.setCurrentIndex(1)
+        self.show_mode.blockSignals(False)
+        self.picker.set_keys([key])
+
+    # -------------------------------------------------------------- tablo
     def refresh(self):
         st = self.state
+        ev = st.evaluator
         q = self.search.text().strip().lower()
         rows = self.filters.apply(st.samples)
         if q:
             rows = [s for s in rows if q in " ".join(
                 str(x or "") for x in (s.sample_no, s.motor_no, s.user_comment, s.lab_comment,
                                         s.platform_code)).lower()]
-        self.table.setSortingEnabled(False)
-        self.table.setRowCount(len(rows))
+        # KPI'lar ve çipler: durum filtresinden önceki küme
         counts = {0: 0, 1: 0, 2: 0}
+        for s in rows:
+            stt, _f = ev.overall(s)
+            if stt in counts and not s.is_fresh:
+                counts[stt] += 1
+        self.k_total.set(sum(1 for s in rows if not s.is_fresh))
+        self.k_motor.set(len({s.motor_no for s in rows if s.motor_no}))
+        self.k_ok.set(counts[0])
+        self.k_warn.set(counts[1])
+        self.k_alarm.set(counts[2])
+        self._rebuild_chips(rows)
+
+        mode = self.show_mode.currentIndex()
+        if mode:
+            thr = mode  # 1: uyarı+alarm, 2: alarm
+            if self.picker.auto:
+                rows = [s for s in rows if not s.is_fresh and (ev.overall(s)[0] or 0) >= thr]
+            else:
+                keys = set(self.picker.keys)
+                rows = [s for s in rows if keys & set(self._flagged(s, thr))]
+
+        if self.picker.auto:
+            flagged = set()
+            for s in rows:
+                flagged.update(self._flagged(s))
+            pkeys = [p.key for p in st.params if p.key in flagged]
+        else:
+            pkeys = [k for k in (p.key for p in st.params) if k in set(self.picker.keys)]
+        if not self.c_cols.isChecked():
+            pkeys = []
+        pkeys = pkeys[:MAX_PARAM_COLS]
+        heads = BASE_COLUMNS + [self._short(k) for k in pkeys] + TAIL_COLUMNS
+        nb = len(BASE_COLUMNS)
+
+        self.table.setSortingEnabled(False)
+        self.table.clear()
+        self.table.setColumnCount(len(heads))
+        self.table.setHorizontalHeaderLabels(heads)
+        for j, k in enumerate(pkeys):
+            hi = self.table.horizontalHeaderItem(nb + j)
+            hi.setToolTip(st.param_label(k))
+        self.table.setRowCount(len(rows))
         for i, s in enumerate(reversed(rows)):
-            status, flagged = st.evaluator.overall(s)
-            if status in counts and not s.is_fresh:
-                counts[status] += 1
+            status, flagged_names = ev.overall(s)
+            evs = ev.evaluate(s)
             if s.stats_excluded:
                 excl, excl_tip = "⊘ tümü", "Numune istatistiklerden tamamen hariç" + (
                     f": {s.stats_note}" if s.stats_note else "")
@@ -117,43 +235,67 @@ class SamplesTab(QWidget):
                     st.pmap[k].name.split(" (")[0] if k in st.pmap else k for k in s.excluded)
             else:
                 excl, excl_tip = "", None
-            vals = [
+            head = [
                 ro_item("Sıfır Yağ" if s.is_fresh else STATUS_TEXT[status],
                         -1 if status is None else status, None if s.is_fresh else status),
                 ro_item(s.sample_no),
                 ro_item(s.motor_no or ""),
+            ]
+            pcells = []
+            for k in pkeys:
+                v = s.values.get(k)
+                e = evs.get(k)
+                if v is None:
+                    pcells.append(ro_item("", None))
+                    continue
+                txt = fmt_num(v) + (" ⊘" if s.is_excluded(k) else "")
+                tip = [st.param_label(k) + f": {fmt_num(v, 3)}"]
+                if e is not None:
+                    tip.append("Durum: " + STATUS_TEXT.get(e.status, "—"))
+                    tip.extend(e.reasons)
+                pcells.append(ro_item(txt, v, None if s.is_fresh or e is None else
+                                      (e.status if e.status in (1, 2) else None), tooltip="\n".join(tip)))
+            tail = [
+                ro_item(format_date(s.date_taken), s.date_taken or ""),
+                ro_item(fmt_num(s.motor_hours), s.motor_hours),
+                ro_item(fmt_num(s.oil_hours), s.oil_hours),
                 ro_item(s.platform_code or ""),
                 ro_item(s.platform_group if s.platform_code else ""),
                 ro_item(s.sample_type),
                 ro_item(s.oil_type or ""),
-                ro_item(format_date(s.date_taken), s.date_taken or ""),
-                ro_item(fmt_num(s.motor_hours), s.motor_hours),
-                ro_item(fmt_num(s.oil_hours), s.oil_hours),
                 ro_item(s.lab_diagnosis or s.lab_diag_letter or "",
                         status=SGS_STATUS.get(s.lab_diagnosis),
                         tooltip=("SGS (analiz firması) teşhisi:\n" + (s.lab_comment or ""))
                         if (s.lab_comment or s.lab_diagnosis) else None),
-                ro_item(", ".join(flagged), len(flagged), tooltip="\n".join(flagged) or None),
+                ro_item(", ".join(flagged_names), len(flagged_names), tooltip="\n".join(flagged_names) or None),
                 ro_item(excl, len(s.excluded) + (100 if s.stats_excluded else 0), tooltip=excl_tip),
                 ro_item((s.user_comment or "").replace("\n", " ")),
             ]
-            for c, it in enumerate(vals):
+            for c, it in enumerate(head + pcells + tail):
                 if c == 0:
                     it.setData(Qt.UserRole, s.id)
                     it.setTextAlignment(Qt.AlignCenter)
+                elif nb <= c < nb + len(pkeys):
+                    it.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
                 self.table.setItem(i, c, it)
         self.table.setSortingEnabled(True)
         self.table.resizeColumnsToContents()
         self.table.setColumnWidth(0, max(80, self.table.columnWidth(0)))
-        self.table.setColumnWidth(11, min(self.table.columnWidth(11), 320))
-        motors = {s.motor_no for s in rows if s.motor_no}
-        self.k_total.set(sum(1 for s in rows if not s.is_fresh))
-        self.k_motor.set(len(motors))
-        self.k_ok.set(counts[0])
-        self.k_warn.set(counts[1])
-        self.k_alarm.set(counts[2])
-        self.info.setText(f"{len(rows)} kayıt listeleniyor. Çift tıklayarak detay, değerlendirme ve "
-                          "parça tahminini açın.")
+        dcol = nb + len(pkeys) + TAIL_COLUMNS.index("Dikkat Gerektirenler")
+        self.table.setColumnWidth(dcol, min(self.table.columnWidth(dcol), 260))
+        for j in range(len(pkeys)):
+            self.table.setColumnWidth(nb + j, max(62, self.table.columnWidth(nb + j)))
+        extra = (f" • {len(pkeys)} parametre sütunu (renk: hücredeki parametrenin durumu; üzerine gelince neden)"
+                 if pkeys else "")
+        self.info.setText(f"{len(rows)} kayıt listeleniyor{extra}. Çift tıklayarak detay ve parça tahminini açın.")
+
+    def _short(self, key):
+        p = self.state.pmap.get(key)
+        if p is None:
+            return key
+        if "(" in p.name and p.unit == "ppm":
+            return p.name.split(" (")[0]  # element sembolü
+        return p.name.replace("Viskozite ", "Visk. ").replace(" İndeksi", " İnd.")
 
     def _selected_ids(self):
         ids = []
@@ -233,7 +375,7 @@ class SampleDialog(QDialog):
             form.addRow("Yağ:", QLabel(s.lubricant))
         self.c_sample_excl = QCheckBox("Bu numuneyi istatistiklerden tamamen hariç tut")
         self.c_sample_excl.setChecked(s.stats_excluded)
-        self.c_sample_excl.setToolTip("Ortalama, min/max, limit ve korelasyon hesaplarına katılmaz; "
+        self.c_sample_excl.setToolTip("Ortalama, min/max ve limit hesaplarına katılmaz; "
                                       "kendisi yine değerlendirilir.")
         form.addRow(self.c_sample_excl)
         self.e_sample_note = QLineEdit(s.stats_note or "")
@@ -296,7 +438,7 @@ class SampleDialog(QDialog):
         self.table.horizontalHeader().setStretchLastSection(True)
         rl.addWidget(self.table, 1)
         rl.addWidget(hint("'Değer' düzenlenebilir (okuma hatası düzeltmek için; boş bırakılan değer silinir). "
-                          "'İst. hariç' işaretli değerler ortalama, min/max, limit ve korelasyon "
+                          "'İst. hariç' işaretli değerler ortalama, min/max ve limit "
                           "hesaplarına katılmaz; numunenin kendi değerlendirmesi yine yapılır."))
         self._fill_values()
         return w

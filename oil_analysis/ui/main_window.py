@@ -17,9 +17,9 @@ from ..parameters import LabelMatcher
 from ..pdf_parser import ParseError, parse_pdf
 from . import theme
 from .common import AppState, button
-from .corr_tab import CorrelationTab
 from .import_dialogs import ExcelImportDialog, PdfImportDialog
 from .parts_tab import PartsTab
+from .report_tab import ReportTab
 from .samples_tab import SamplesTab
 from .settings_dialog import SettingsDialog
 from .stats_tab import StatsTab
@@ -57,13 +57,19 @@ uyarı/alarm limitleri hesaplanır.</li>
 <p>Absürt / hatalı değerler <b>İstatistik &amp; Limitler</b> sayfasındaki değer inceleme panelinden
 (tek tek veya önerilen uç değerler olarak) ya da numune detayındaki <i>İst. hariç</i> sütunundan
 istatistik dışı bırakılabilir; numunenin tamamı da hariç tutulabilir. Hariç değerler ortalama, min/max,
-limit, artış hızı ve korelasyon hesaplarına katılmaz; ancak silinmez, numunenin kendi değerlendirmesi
+limit ve artış hızı hesaplarına katılmaz; ancak silinmez, numunenin kendi değerlendirmesi
 yapılmaya devam eder ve kararlar veritabanında nedenleriyle saklanır.</p>
 <h3>Parça tahmini</h3>
 <p><b>Malzeme Kaynakları</b> sayfasında her malzeme için olası kaynak parçalar tanımlanır. Numune
 detayındaki <i>Parça Tahmini</i> sekmesi, önceki numuneye göre anlamlı artan (varsayılan ≥ %50 ve
 ≥ 2 ppm) veya uyarı/alarm veren malzemeleri listeler ve kaynak parçaları puanlar (alarm 3, uyarı 2,
 artış 1). Birden çok malzemenin işaret ettiği parça üst sıraya çıkar (ör. Fe + Cr → segman).</p>
+<h3>Raporlama</h3>
+<p><b>Raporlama</b> sayfasında bölümler (özet, numune listesi, uyarı/alarm detayları, yorumlar, trend
+grafikleri, parça tahmini, istatistikler, SGS yorumları, hariç tutulan değerler), kapsam (platform, yağ,
+numune tipi, motor, tarih aralığı) ve kapak bilgileri seçilir. Çıktı PDF veya Word (DOCX) olarak alınır;
+her ikisinde de kapak sayfası ve içindekiler bulunur. Word'de içindekiler sayfa numaraları dosya
+açılırken alanlar güncellenince dolar.</p>
 <h3>Rapor okuma algoritması</h3>
 <p>PDF'teki kelimeler konumlarıyla okunur; numune sütunları "Sample Number" satırındaki analiz
 numaralarından bulunur. Etiketler normalize edilir (Türkçe karakter, birim, noktalama temizlenir),
@@ -80,7 +86,7 @@ def default_db_path() -> str:
     return str(Path(docs) / "YagAnalizi" / "yag_analizi.db")
 
 
-PAGES = [SamplesTab, TrendTab, StatsTab, CorrelationTab, PartsTab]
+PAGES = [SamplesTab, TrendTab, StatsTab, PartsTab, ReportTab]
 
 
 class MainWindow(QMainWindow):
@@ -184,7 +190,7 @@ class MainWindow(QMainWindow):
         tbox.addWidget(self.page_title)
         tbox.addWidget(self.page_sub)
         hl.addLayout(tbox, 1)
-        b_exp = button("Dışa aktar", "export", tooltip="Tüm veriyi renklendirilmiş Excel'e aktar")
+        b_exp = button("Excel'e aktar", "excel", tooltip="Tüm veriyi renklendirilmiş Excel'e aktar")
         b_exp.clicked.connect(self.export_excel)
         b_xls = button("Excel içe aktar", "excel", tooltip="Geçmiş analiz Excel'ini içe aktar")
         b_xls.clicked.connect(self.import_excel)

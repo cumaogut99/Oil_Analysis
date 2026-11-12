@@ -24,7 +24,7 @@ istatistik/limit hesaplayan ve trendleri gösteren **tamamen çevrimdışı** ma
 
   Ayrıntılar uygulamada **Yardım > Değerlendirme yöntemleri** menüsündedir.
 - **Kullanıcı yorumu:** Her numune için ayrı bir değerlendirme alanı vardır. SGS teşhisi yalnızca bilgi amaçlı gösterilir.
-- **İstatistikten hariç tutma:** Absürt değerler ortalama, min/max, limit, artış hızı ve korelasyon hesaplarından çıkarılabilir; değerler silinmez.
+- **İstatistikten hariç tutma:** Absürt değerler ortalama, min/max, limit ve artış hızı hesaplarından çıkarılabilir; değerler silinmez.
   - İstatistik & Limitler sayfasındaki değer inceleme panelinden tek tek veya önerilen uç değerler olarak (dayanıklı z-skoru > 3.5)
   - Numune detayındaki "İst. hariç" sütunundan; ya da numunenin tamamı için
   - Her karar nedeniyle birlikte veritabanında saklanır ve Excel çıktısındaki "Hariç Tutulanlar" sayfasında listelenir.
@@ -33,11 +33,15 @@ istatistik/limit hesaplayan ve trendleri gösteren **tamamen çevrimdışı** ma
   - Kaynak parçaları puanlar. Birden çok malzemenin işaret ettiği parça (ör. Fe + Cr → segman) üst sıraya çıkar.
 - **Sınıflandırma:** platform kodu (C9, C10…) → grup (Baykar / TUSAŞ / TEI), yağ tipi, numune tipi (Rodaj / Green / Saha / Sıfır Yağ / Diğer).
 - **Sayfalar:**
-  - Numuneler
-  - Trend: tek motor veya filtrelenmiş tüm motorlar
+  - Numuneler: parametre odaklı görünüm
+    - Parametre seçici; hazır gruplar: "Uyarı/alarm verenler (otomatik)", "Tüm elementler (spektrometri)", aşınma, kirletici, katkı, fiziksel, FTIR
+    - "Yalnız seçili parametrelerde uyarı/alarm olanlar" filtresi
+    - Seçili parametrelerin durum renkli değer sütunları; hücrenin üzerine gelince neden görünür
+    - En sık uyarı/alarm veren parametreler için tek tık filtre çipleri
+  - Trend: tek motor veya filtrelenmiş tüm motorlar. Bir noktanın üzerine gelince motor, numune, tarih, saatler, değer, durum ve neden gösterilir; tüm motorlar görünümünde o motorun çizgisi vurgulanır.
   - İstatistik & Limitler: Excel'e aktarılabilir
-  - İlişkiler: korelasyon ısı haritası ve dağılım grafiği
   - Malzeme Kaynakları
+  - Raporlama: bölümler, kapsam (platform/yağ/numune tipi/motor/tarih aralığı) ve kapak bilgileri seçilir; **PDF** veya **Word (DOCX)** çıktısı alınır, ikisinde de kapak sayfası ve içindekiler bulunur. Seçilebilen bölümler: özet, numune listesi, uyarı/alarm detayları, değerlendirme yorumları, trend grafikleri, parça tahmini, istatistikler, SGS yorumları, hariç tutulan değerler.
 - **Excel'e dışa aktarma:** renklendirilmiş geniş format, yorumlar ve uzun format sayfaları.
 - **Veritabanı:** tek `.db` dosyası (varsayılan: `Belgeler/YagAnalizi/yag_analizi.db`); menüden yedeklenebilir veya başka bir dosya açılabilir.
 
@@ -71,7 +75,7 @@ python run.py
 2. Proje klasöründe ayrı bir sanal ortam (`build_env`) oluşturur; sistemdeki Python kurulumuna dokunmaz.
 3. Python 3.8 ile test edilmiş sabit sürümlü paketleri kurar (`requirements-py38.txt`, `requirements-build.txt`).
 4. PyInstaller ile **tek dosya, konsolsuz** `dist\YagAnalizi.exe` üretir. Tasarım dosyaları ve uygulama ikonu da pakete eklenir.
-5. Üretilen exe'yi `--selftest` ile pencere açmadan çalıştırıp doğrular: tema dosyaları, PDF okuma, Excel/grafik kütüphaneleri ve tüm sayfalar denenir. Sonuç `build\selftest.txt` dosyasına yazılır.
+5. Üretilen exe'yi `--selftest` ile pencere açmadan çalıştırıp doğrular: tema dosyaları, PDF okuma, PDF/Word rapor üretimi, Excel/grafik kütüphaneleri ve tüm sayfalar denenir. Sonuç `build\selftest.txt` dosyasına yazılır.
 
 Tüm çıktı `build\build_log.txt` dosyasına da kaydedilir. Oluşan exe tek başına çalışır; kopyalandığı bilgisayarda Python kurulu olması gerekmez.
 

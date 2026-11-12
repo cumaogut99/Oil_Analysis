@@ -150,6 +150,23 @@ QPushButton[variant="danger"]:hover { background: {{danger}}; color: {{text_inve
 QPushButton[variant="ghost"] { background: transparent; border: 1px solid transparent; }
 QPushButton[variant="ghost"]:hover { background: {{surface_hover}}; }
 QDialogButtonBox QPushButton { min-width: 84px; }
+QPushButton[variant="chip"] {
+    background: {{surface_alt}};
+    border: 1px solid {{border}};
+    border-radius: 12px;
+    padding: 3px 11px;
+    min-height: 14px;
+    font-size: 9pt;
+    color: {{text}};
+}
+QPushButton[variant="chip"]:hover { border-color: {{primary}}; }
+QPushButton[variant="chip"]:checked {
+    background: {{primary_soft}};
+    border-color: {{primary}};
+    color: {{text}};
+    font-weight: 600;
+}
+QToolButton::menu-indicator { image: none; width: 0; }
 
 /* ----------------------------------------------------------- girdiler ---- */
 QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QTextEdit, QTextBrowser {

@@ -79,7 +79,31 @@ def _selftest(out_path: str) -> int:
             raise RuntimeError(f"PDF değerleri yanlış okundu: {s and s.values}")
         return f"{len(s.values)} parametre okundu"
 
+    def t_report():
+        from .db import Database
+        from .evaluation import Evaluator
+        from .report import SECTIONS, ReportOptions, build_report
+        from .report.docx_writer import write_docx
+        from .report.pdf_writer import write_pdf
+        db = Database(os.path.join(tmp, "r.db"))
+        for i in range(8):
+            db.save_sample(f"T{i:03d}", "TMS00001", {"sample_type": "Saha", "oil_type": "0W40",
+                                                    "motor_hours": 100 + 10 * i, "oil_hours": 10 * i + 5,
+                                                    "date_taken": f"{i + 1:02d}/01/2026"},
+                           {"fe": 10 + i * (5 if i == 7 else 1), "visc100": 13.0, "ca": 2400})
+        ss = db.load_samples()
+        ev = Evaluator(ss, db.parameters(), db.settings())
+        opts = ReportOptions(title="Öz-test raporu ğüşıöç", sections=[k for k, _t, _d in SECTIONS],
+                             trend_keys=["fe"])
+        rep = build_report(ss, db.parameters(), db.settings(), ev, db.part_sources(), opts)
+        a, b = os.path.join(tmp, "r.pdf"), os.path.join(tmp, "r.docx")
+        write_pdf(rep, a)
+        write_docx(rep, b)
+        db.close()
+        return f"PDF {os.path.getsize(a) // 1024} KB, DOCX {os.path.getsize(b) // 1024} KB"
+
     step("Tema ve tasarım dosyaları", t_theme)
+    step("Rapor (PDF / DOCX)", t_report)
     step("PDF okuma (pdfminer)", t_pdf)
     step("PDF / Excel / grafik kütüphaneleri", t_libs)
     step("Ana pencere ve sayfalar", t_window)
