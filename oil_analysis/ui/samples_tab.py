@@ -127,10 +127,10 @@ class SamplesTab(QWidget):
     def _rebuild_chips(self, rows):
         while self.chips_row.count():
             it = self.chips_row.takeAt(0)
-            if it.widget():
-                it.widget().hide()
-                it.widget().setParent(None)
-                it.widget().deleteLater()
+            w = it.widget()
+            if w is not None:
+                w.hide()
+                w.deleteLater()
         counts = {}
         for s in rows:
             if s.is_fresh:
@@ -360,8 +360,9 @@ class SampleDialog(QDialog):
         self.e_date = QLineEdit(format_date(s.date_taken))
         self.e_mh = QLineEdit(fmt_num(s.motor_hours))
         self.e_oh = QLineEdit(fmt_num(s.oil_hours))
-        form.addRow("Analiz No:", QLabel(f"<b>{s.sample_no}</b>  <span style='color:gray'>"
-                                         f"{s.origin or ''}</span>"))
+        self.e_no = QLineEdit(s.sample_no)
+        self.e_no.setToolTip(f"Kaynak: {s.origin or '-'}" + (f" ({s.source_file})" if s.source_file else ""))
+        form.addRow("Analiz No:", self.e_no)
         form.addRow("Motor No:", self.e_motor)
         form.addRow("Platform:", self.e_platform)
         grp = state.platforms.get(s.platform_code or "", "") if s.platform_code else ""
@@ -428,8 +429,13 @@ class SampleDialog(QDialog):
         rl.setContentsMargins(10, 10, 10, 10)
         _pop, desc = st.evaluator.ref_population(s)
         status, _ = st.evaluator.overall(s)
-        rl.addWidget(QLabel(f"Genel durum: <b>{STATUS_TEXT[status]}</b>   •   Referans grubu: {desc}"
-                            f"   •   Hız: ppm / 100 sa yağ çalışması"))
+        top = QHBoxLayout()
+        top.addWidget(QLabel(f"Genel durum: <b>{STATUS_TEXT[status]}</b>   •   Referans grubu: {desc}"
+                             f"   •   Hız: ppm / 100 sa yağ çalışması"), 1)
+        self.c_all = QCheckBox("Tüm parametreleri göster (boş olanlara değer girmek için)")
+        self.c_all.toggled.connect(self._toggle_all)
+        top.addWidget(self.c_all)
+        rl.addLayout(top)
         heads = ["Parametre", "İst. hariç", "Değer", "Durum", "Uyarı limiti", "Alarm limiti",
                  "Sıfır yağ", "Değişim %", "Artış hızı", "Hız uyarı/alarm", "Açıklama"]
         self.table = QTableWidget(0, len(heads))
@@ -437,18 +443,44 @@ class SampleDialog(QDialog):
         style_table(self.table)
         self.table.horizontalHeader().setStretchLastSection(True)
         rl.addWidget(self.table, 1)
-        rl.addWidget(hint("'Değer' düzenlenebilir (okuma hatası düzeltmek için; boş bırakılan değer silinir). "
+        rl.addWidget(hint("'Değer' düzenlenebilir: okuma hatasını düzeltin, boş satıra değer girin; "
+                          "değeri silinen ölçüm kaldırılır. "
                           "'İst. hariç' işaretli değerler ortalama, min/max ve limit "
                           "hesaplarına katılmaz; numunenin kendi değerlendirmesi yine yapılır."))
         self._fill_values()
         return w
 
+    # Değeri olmasa da her zaman listelenen temel parametreler
+    ALWAYS_KEYS = ("visc40", "visc100", "vi", "tbn", "tan")
+
+    def _pending_edits(self):
+        """Tablodaki kaydedilmemiş düzenlemeler: key -> (değer metni, hariç mi, not)."""
+        out = {}
+        for i, key in enumerate(getattr(self, "_row_keys", [])):
+            v, x = self.table.item(i, 2), self.table.item(i, self.EXCL_COL)
+            out[key] = (v.text() if v else "", x.checkState() == Qt.Checked if x else False,
+                        x.text() if x else "")
+        return out
+
+    def _toggle_all(self, _on):
+        pending = self._pending_edits()
+        self._fill_values()
+        for i, key in enumerate(self._row_keys):
+            if key in pending:
+                txt, excl, note = pending[key]
+                self.table.item(i, 2).setText(txt)
+                self.table.item(i, self.EXCL_COL).setCheckState(Qt.Checked if excl else Qt.Unchecked)
+                self.table.item(i, self.EXCL_COL).setText(note)
+
     def _fill_values(self):
         st, s = self.state, self.s
         ev = st.evaluator.evaluate(s)
-        keys = [p.key for p in st.params if p.key in s.values or p.key in s.raws]
+        show_all = getattr(self, "c_all", None) is not None and self.c_all.isChecked()
+        keys = [p.key for p in st.params
+                if show_all or p.key in self.ALWAYS_KEYS or p.key in s.values or p.key in s.raws]
         self.table.setRowCount(len(keys))
         self._row_keys = keys
+        muted = QColor(theme.token("status_excluded_fg", "#94a3b8"))
         for i, key in enumerate(keys):
             e = ev.get(key)
             raw = s.raws.get(key)
@@ -488,6 +520,9 @@ class SampleDialog(QDialog):
             ]
             if stt in (1, 2):
                 paint_status(val, stt)
+            if v is None and not raw:
+                name.setForeground(muted)
+                val.setToolTip("Değer yok — girmek için çift tıklayın")
             if key in s.excluded or s.stats_excluded:
                 name.setForeground(QColor(theme.token("status_excluded_fg", "#94a3b8")))
                 name.setText(name.text() + "  ⊘")
@@ -554,6 +589,14 @@ class SampleDialog(QDialog):
         return w
 
     def save(self):
+        db = self.state.db
+        new_no = self.e_no.text().strip().upper()
+        if not new_no:
+            QMessageBox.warning(self, "Analiz No", "Analiz numarası boş olamaz.")
+            return
+        if new_no != self.s.sample_no and not db.rename_sample(self.s.id, new_no):
+            QMessageBox.warning(self, "Analiz No", f"{new_no} numaralı başka bir numune zaten kayıtlı.")
+            return
         values = {}
         excl_changes = []
         for i, key in enumerate(self._row_keys):
@@ -576,7 +619,6 @@ class SampleDialog(QDialog):
             "oil_hours": self.e_oh.text(),
             "user_comment": self.e_comment.toPlainText().strip() or None,
         }
-        db = self.state.db
         db.update_sample(self.s.id, self.e_motor.text(), meta, values)
         for key, want, note in excl_changes:
             db.set_excluded(self.s.id, key, want, note, commit=False)

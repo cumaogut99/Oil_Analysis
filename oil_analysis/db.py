@@ -401,6 +401,18 @@ class Database:
                    ON CONFLICT(sample_id, param_key) DO UPDATE SET value=excluded.value, raw=excluded.raw""",
                 (sid, key, val, raw_s))
 
+    def rename_sample(self, sid: int, new_no: str) -> bool:
+        """Analiz numarasını değiştirir. Aynı numara başka numunede varsa False döner."""
+        new_no = (new_no or "").strip().upper()
+        if not new_no:
+            return False
+        r = self.conn.execute("SELECT id FROM samples WHERE sample_no=?", (new_no,)).fetchone()
+        if r and r["id"] != sid:
+            return False
+        self.conn.execute("UPDATE samples SET sample_no=? WHERE id=?", (new_no, sid))
+        self.conn.commit()
+        return True
+
     def update_sample(self, sid: int, motor_no: str | None, meta: dict, values: dict | None = None):
         rec = dict(meta)
         for k in ("date_taken", "date_received", "date_analysis", "date_diagnosis"):

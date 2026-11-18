@@ -146,6 +146,43 @@ def _write_test_pdf(path: str):
         f.write(bytes(out))
 
 
+def _install_error_handler(app):
+    """Beklenmeyen hataları kaybetmeden göster ve dosyaya kaydet.
+
+    Pencereli exe'de konsol olmadığından, aksi halde bir hata sessizce yutulur ve
+    ekran yarım güncellenmiş kalır.
+    """
+    import datetime as _dt
+
+    from PySide6.QtCore import QStandardPaths
+    from PySide6.QtWidgets import QMessageBox
+
+    docs = QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation) or os.path.expanduser("~")
+    log_path = os.path.join(docs, "YagAnalizi", "hata_kaydi.txt")
+    shown = set()
+
+    def hook(exc_type, exc, tb):
+        text = "".join(traceback.format_exception(exc_type, exc, tb))
+        try:
+            os.makedirs(os.path.dirname(log_path), exist_ok=True)
+            with open(log_path, "a", encoding="utf-8") as f:
+                f.write(f"\n===== {_dt.datetime.now():%Y-%m-%d %H:%M:%S} =====\n{text}")
+        except OSError:
+            pass
+        sys.__stderr__ and sys.__stderr__.write(text)
+        key = (exc_type.__name__, str(exc))
+        if key in shown:
+            return
+        shown.add(key)
+        box = QMessageBox(QMessageBox.Critical, "Beklenmeyen hata",
+                          f"Bir hata oluştu: {exc_type.__name__}: {exc}\n\n"
+                          f"Ayrıntı şu dosyaya kaydedildi:\n{log_path}")
+        box.setDetailedText(text)
+        box.exec()
+
+    sys.excepthook = hook
+
+
 def main(argv=None):
     argv = list(sys.argv if argv is None else argv)
     os.environ.setdefault("QT_API", "pyside6")
@@ -168,6 +205,7 @@ def main(argv=None):
     from .ui import theme
     theme.apply(app, QSettings("YagAnalizi", "MotorYagiAnaliz").value("theme", "light"))
     app.setWindowIcon(theme.icon("drop", "#2563eb", 64))
+    _install_error_handler(app)
     db_path = argv[1] if len(argv) > 1 and argv[1].endswith((".db", ".sqlite")) else None
     win = MainWindow(db_path)
     win.show()
