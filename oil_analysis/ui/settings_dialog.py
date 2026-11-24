@@ -1,4 +1,4 @@
-"""Ayarlar: platformlar, viskozite aralıkları, sabit limitler, değerlendirme, eşleştirmeler."""
+"""Ayarlar: yağ tipleri, platformlar, viskozite aralıkları, sabit limitler, değerlendirme, eşleştirmeler."""
 from __future__ import annotations
 
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, QDoubleSpinBox,
@@ -6,10 +6,14 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDialogButtonBox, 
                                QSpinBox, QTableWidget, QTableWidgetItem, QTabWidget, QVBoxLayout,
                                QWidget)
 
-from ..db import PLATFORM_GROUPS
+from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QInputDialog, QLineEdit
+
+from ..db import PLATFORM_GROUPS, normalize_oil_type
 from ..evaluation import GROUP_LABELS
 from ..stats import METHODS
 from ..textnorm import fmt_num, parse_number
+from . import auth
 from .common import AppState
 
 
@@ -43,6 +47,31 @@ class SettingsDialog(QDialog):
         lay = QVBoxLayout(self)
         tabs = QTabWidget()
         lay.addWidget(tabs, 1)
+
+        # ---------------- yağ tipleri
+        w = QWidget()
+        wl = QVBoxLayout(w)
+        wl.addWidget(QLabel("Numune ekleme/düzenleme ekranlarındaki yağ tipi listesine eklenecek tipler. "
+                            "Numunelerde kullanılan tipler silinemez."))
+        self.t_oil = _table(["Yağ tipi", "Numune sayısı"])
+        self._oil_usage = {}
+        for smp in state.samples:
+            if smp.oil_type:
+                self._oil_usage[smp.oil_type] = self._oil_usage.get(smp.oil_type, 0) + 1
+        for oil in state.oil_types():
+            self._add_oil_row(oil)
+        wl.addWidget(self.t_oil, 1)
+        row = QHBoxLayout()
+        b = QPushButton("Yeni yağ tipi ekle")
+        b.setProperty("variant", "primary")
+        b.clicked.connect(self._new_oil)
+        row.addWidget(b)
+        b = QPushButton("Seçili yağ tipini sil")
+        b.clicked.connect(self._del_oil)
+        row.addWidget(b)
+        row.addStretch(1)
+        wl.addLayout(row)
+        tabs.addTab(w, "Yağ Tipleri")
 
         # ---------------- platformlar
         w = QWidget()
@@ -147,6 +176,25 @@ class SettingsDialog(QDialog):
         wl.addWidget(b)
         tabs.addTab(w, "Etiket Eşleştirmeleri")
 
+        # ---------------- şifre
+        w = QWidget()
+        wl = QVBoxLayout(w)
+        wl.addWidget(QLabel("Silme ve değiştirme işlemleri düzenleme şifresi ister. Şifre bu veritabanı "
+                            "dosyasına kaydedilir; dosyayı kullanan herkes için geçerlidir.\n"
+                            f"Doğru şifre girildikten sonra {auth.UNLOCK_SECONDS // 60} dakika boyunca "
+                            "tekrar sorulmaz."))
+        row = QHBoxLayout()
+        b = QPushButton("Şifreyi değiştir…")
+        b.clicked.connect(self._change_password)
+        row.addWidget(b)
+        b = QPushButton("Kilitle (şifreyi hemen tekrar sor)")
+        b.clicked.connect(auth.lock)
+        row.addWidget(b)
+        row.addStretch(1)
+        wl.addLayout(row)
+        wl.addStretch(1)
+        tabs.addTab(w, "Şifre")
+
         bb = QDialogButtonBox(QDialogButtonBox.Save | QDialogButtonBox.Cancel)
         bb.button(QDialogButtonBox.Save).setText("Kaydet")
         bb.button(QDialogButtonBox.Save).setProperty("variant", "primary")
@@ -197,14 +245,79 @@ class SettingsDialog(QDialog):
             v = d.get(k)
             self.t_fixed.setItem(r, c, QTableWidgetItem("" if v is None else fmt_num(v, 4)))
 
+    def _add_oil_row(self, oil):
+        r = self.t_oil.rowCount()
+        self.t_oil.insertRow(r)
+        for c, v in enumerate((oil, str(self._oil_usage.get(oil, 0)))):
+            it = QTableWidgetItem(v)
+            it.setFlags(it.flags() & ~Qt.ItemIsEditable)
+            self.t_oil.setItem(r, c, it)
+
+    def _oil_list(self) -> list[str]:
+        return [self.t_oil.item(r, 0).text() for r in range(self.t_oil.rowCount())]
+
+    def _new_oil(self):
+        name, ok = QInputDialog.getText(self, "Yeni yağ tipi", "Yağ tipi (ör. 10W40, 15W50):")
+        if not ok:
+            return
+        name = normalize_oil_type(name)
+        if not name:
+            return
+        if name in self._oil_list():
+            QMessageBox.information(self, "Yağ tipi", f"{name} zaten tanımlı.")
+            return
+        self._add_oil_row(name)
+        self.t_oil.sortItems(0)
+
+    def _del_oil(self):
+        r = self.t_oil.currentRow()
+        if r < 0:
+            return
+        oil = self.t_oil.item(r, 0).text()
+        n = self._oil_usage.get(oil, 0)
+        if n:
+            QMessageBox.warning(self, "Yağ tipi", f"{oil} {n} numunede kullanılıyor; silinemez.")
+            return
+        visc_rows = [i for i in range(self.t_visc.rowCount())
+                     if self.t_visc.item(i, 0) and normalize_oil_type(self.t_visc.item(i, 0).text()) == oil]
+        if visc_rows and QMessageBox.question(
+                self, "Yağ tipi", f"{oil} için tanımlı viskozite aralığı da silinecek. Devam edilsin mi?"
+        ) != QMessageBox.Yes:
+            return
+        for i in reversed(visc_rows):
+            self.t_visc.removeRow(i)
+        self.t_oil.removeRow(r)
+
+    def _change_password(self):
+        if not auth.require_password(self, self.state.db, "Şifre değiştirme"):
+            return
+        new, ok = QInputDialog.getText(self, "Yeni şifre", "Yeni şifre:", QLineEdit.Password)
+        if not ok:
+            return
+        if not new:
+            QMessageBox.warning(self, "Şifre", "Şifre boş olamaz.")
+            return
+        again, ok = QInputDialog.getText(self, "Yeni şifre", "Yeni şifre (tekrar):", QLineEdit.Password)
+        if not ok:
+            return
+        if again != new:
+            QMessageBox.warning(self, "Şifre", "Şifreler eşleşmiyor; değiştirilmedi.")
+            return
+        self.state.db.set_password(new)
+        QMessageBox.information(self, "Şifre", "Şifre değiştirildi.")
+
     def _del_alias(self):
         r = self.t_alias.currentRow()
         if r < 0:
+            return
+        if not auth.require_password(self, self.state.db, "Eşleştirme silme"):
             return
         self.state.db.delete_alias(self.t_alias.item(r, 0).text())
         self.t_alias.removeRow(r)
 
     def save(self):
+        if not auth.require_password(self, self.state.db, "Ayarları kaydetmek"):
+            return
         db = self.state.db
         # platformlar
         existing = set(self.state.platforms)
@@ -222,7 +335,9 @@ class SettingsDialog(QDialog):
             vals = [(self.t_visc.item(r, c).text().strip() if self.t_visc.item(r, c) else "") for c in range(3)]
             lo, hi = parse_number(vals[1]), parse_number(vals[2])
             if vals[0] and lo is not None and hi is not None:
-                visc[vals[0].upper()] = [lo, hi]
+                visc[normalize_oil_type(vals[0])] = [lo, hi]
+        oils = self._oil_list()
+        oils = sorted(set(oils) | set(visc))
         fixed = {}
         for r in range(self.t_fixed.rowCount()):
             key = self.t_fixed.cellWidget(r, 0).currentData()
@@ -250,6 +365,7 @@ class SettingsDialog(QDialog):
             "tbn_ratio_warn": self.tbn_w.value(), "tbn_ratio_alarm": self.tbn_a.value(),
             "change_rel": self.ch_rel.value(), "change_abs": self.ch_abs.value(),
             "visc_limits": visc,
+            "oil_types": oils,
             "fixed_limits": fixed,
         })
         self.state.reload()

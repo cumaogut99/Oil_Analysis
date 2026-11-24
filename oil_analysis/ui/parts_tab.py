@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QFrame, QHBoxLayout, QLabel, QListWidget, QListWi
 from ..parameters import CONTAMINANT, FTIR, WEAR
 from ..parts import DEFAULT_SOURCES
 from ..textnorm import normalize_label
-from . import theme
+from . import auth, theme
 from .common import AppState, button, hint, style_table
 
 PRIMARY_CATEGORIES = (WEAR, CONTAMINANT)
@@ -123,8 +123,7 @@ class PartsTab(QWidget):
                                  "Bu malzemedeki değişiklikler kaydedilsin mi?",
                                  QMessageBox.Save | QMessageBox.Discard | QMessageBox.Cancel)
         if r == QMessageBox.Save:
-            self.save(reload=False)
-            return True
+            return self.save(reload=False)
         if r == QMessageBox.Discard:
             self.dirty = False
             return True
@@ -209,10 +208,13 @@ class PartsTab(QWidget):
         self._fill(rows)
         self.dirty = added > 0
 
-    def save(self, reload=True):
+    def save(self, reload=True) -> bool:
         if self.current is None:
-            return
+            return False
+        if not auth.require_password(self, self.state.db, "Parça kaynaklarını kaydetmek"):
+            return False
         self.state.db.save_part_sources(self.current, self._rows())
         self.dirty = False
         if reload:
             self.reload_list()
+        return True

@@ -13,7 +13,7 @@ from ..db import SAMPLE_TYPES, Sample
 from ..evaluation import STATUS_TEXT
 from ..parts import diagnose
 from ..textnorm import fmt_num, format_date
-from . import theme
+from . import auth, theme
 from .common import (AppState, FilterBar, KpiCard, button, hint, paint_status, ro_item,
                      style_table)
 from .param_picker import ParamPicker
@@ -319,6 +319,8 @@ class SamplesTab(QWidget):
             return
         if QMessageBox.question(self, "Sil", f"{len(ids)} numune silinsin mi?") != QMessageBox.Yes:
             return
+        if not auth.require_password(self, self.state.db, "Numune silme"):
+            return
         for sid in ids:
             self.state.db.delete_sample(sid)
         self.state.reload()
@@ -590,6 +592,8 @@ class SampleDialog(QDialog):
 
     def save(self):
         db = self.state.db
+        if not auth.require_password(self, db, "Numune değiştirme"):
+            return
         new_no = self.e_no.text().strip().upper()
         if not new_no:
             QMessageBox.warning(self, "Analiz No", "Analiz numarası boş olamaz.")

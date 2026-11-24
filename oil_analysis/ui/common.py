@@ -101,7 +101,8 @@ class AppState(QObject):
 
     def oil_types(self) -> list[str]:
         return sorted({s.oil_type for s in self.samples if s.oil_type}
-                      | set(self.settings.get("visc_limits", {})))
+                      | set(self.settings.get("oil_types") or [])
+                      | set(self.settings.get("visc_limits") or {}))
 
 
 class NumItem(QTableWidgetItem):

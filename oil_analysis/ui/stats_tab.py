@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QFrame, QHBoxL
 
 from ..stats import METHODS, compute_limits, describe
 from ..textnorm import fmt_num, format_date
-from . import theme
+from . import auth, theme
 from .common import AppState, FilterBar, MplWidget, button, hint, ro_item, style_table
 
 HEADS = ["Parametre", "Yön", "n", "Hariç", "Min", "Max", "Ortalama", "Std", "Medyan", "P95",
@@ -138,6 +138,8 @@ class StatsTab(QWidget):
         return s
 
     def save_method(self):
+        if not auth.require_password(self, self.state.db, "Limit yöntemini kaydetmek"):
+            return
         self.state.db.save_settings({"method": self.method.currentData(),
                                      "trim_outliers": self.c_trim.isChecked()})
         self.state.reload()
@@ -324,6 +326,9 @@ class StatsTab(QWidget):
         note = note_item.text().strip() if note_item else ""
         if c == 6 and not want and note:
             want = True  # neden yazıldıysa hariç tut
+        if not auth.require_password(self, self.state.db, "Hariç tutma değişikliği"):
+            self.state.reload()  # tabloyu eski haline döndür
+            return
         self.state.db.set_excluded(s.id, key, want, note)
         self.state.reload()
 
@@ -341,7 +346,7 @@ class StatsTab(QWidget):
             self, "Uç değerleri hariç tut",
             f"{len(cand)} değer istatistik dışı bırakılacak:\n{lst}\n\nNeden (opsiyonel):",
             text="Uç değer (dayanıklı z > 3.5)")
-        if not ok:
+        if not ok or not auth.require_password(self, self.state.db, "Uç değerleri hariç tutmak"):
             return
         for s in cand:
             self.state.db.set_excluded(s.id, key, True, note, commit=False)
@@ -355,6 +360,8 @@ class StatsTab(QWidget):
         if QMessageBox.question(self, "Hariçleri kaldır",
                                 f"{self.state.param_label(key)} için tüm hariç tutmalar kaldırılsın mı?\n"
                                 "(Tamamen hariç tutulmuş numuneler etkilenmez)") != QMessageBox.Yes:
+            return
+        if not auth.require_password(self, self.state.db, "Hariç tutmaları kaldırmak"):
             return
         self.state.db.clear_exclusions(key)
         self.state.reload()

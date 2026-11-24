@@ -43,6 +43,8 @@ istatistik/limit hesaplayan ve trendleri gösteren **tamamen çevrimdışı** ma
   - Malzeme Kaynakları
   - Raporlama: bölümler, kapsam (platform/yağ/numune tipi/motor/tarih aralığı) ve kapak bilgileri seçilir; **PDF** veya **Word (DOCX)** çıktısı alınır, ikisinde de kapak sayfası ve içindekiler bulunur. Seçilebilen bölümler: özet, numune listesi, uyarı/alarm detayları, değerlendirme yorumları, trend grafikleri, parça tahmini, istatistikler, SGS yorumları, hariç tutulan değerler.
 - **Excel'e dışa aktarma:** renklendirilmiş geniş format, yorumlar ve uzun format sayfaları.
+- **Yağ tipleri:** Ayarlar > Yağ Tipleri sekmesinden yeni yağ tipi eklenir/silinir (numunelerde kullanılan tip silinemez); eklenen tipler numune ekleme/düzenleme listelerinde görünür.
+- **Düzenleme şifresi:** numune silme/düzenleme, hariç tutma, ayarlar, malzeme kaynakları ve içe aktarmada üzerine yazma şifre ister (varsayılan: `gucunkaymagi`). Şifrenin özeti veritabanı dosyasında saklanır, Ayarlar > Şifre sekmesinden değiştirilebilir. Doğru girişten sonra 5 dakika tekrar sorulmaz. Sıkı bir güvenlik önlemi değildir.
 - **Veritabanı:** tek `.db` dosyası (varsayılan: `Belgeler/YagAnalizi/yag_analizi.db`); menüden yedeklenebilir veya başka bir dosya açılabilir.
 
 ## Tasarım dosyaları (tema)

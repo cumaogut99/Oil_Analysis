@@ -16,6 +16,7 @@ from ..importer import apply_mappings, save_excel, save_report
 from ..parameters import META_FIELDS
 from ..pdf_parser import ParsedReport
 from ..textnorm import parse_number
+from . import auth
 from .common import AppState
 
 IGNORE = "— Yoksay —"
@@ -217,6 +218,9 @@ class PdfImportDialog(QDialog):
             if QMessageBox.question(self, "Yağ tipi", "Yağ tipi boş. Yine de kaydedilsin mi? "
                                     "(Yağ tipine göre limitler uygulanamaz)") != QMessageBox.Yes:
                 return
+        if (self.c_over.isChecked() and self.state.db.sample_exists(self.report.main_sample_no or "")
+                and not auth.require_password(self, self.state.db, "Kayıtlı numunenin üzerine yazmak")):
+            return
         # tablo düzenlemelerini geri yaz
         for c, sno in enumerate(self._snos):
             s = self.report.samples[sno]
@@ -276,6 +280,7 @@ class ExcelImportDialog(QDialog):
 
         total = sum(len(sh.samples) for sh in sheets)
         existing = sum(1 for sh in sheets for s in sh.samples if state.db.sample_exists(s.sample_no))
+        self._existing = existing
         lay.addWidget(QLabel(f"Toplam {total} analiz; {existing} tanesi veritabanında zaten kayıtlı."))
         self.c_over = QCheckBox("Kayıtlı analizlerin üzerine yaz")
         lay.addWidget(self.c_over)
@@ -288,6 +293,9 @@ class ExcelImportDialog(QDialog):
         lay.addWidget(bb)
 
     def save(self):
+        if (self.c_over.isChecked() and self._existing
+                and not auth.require_password(self, self.state.db, "Kayıtlı analizlerin üzerine yazmak")):
+            return
         mapping = self.unmatched.mapping()
         for sh in self.sheets:
             apply_mappings(sh.samples, sh.unmatched, mapping)

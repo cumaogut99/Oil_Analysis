@@ -373,3 +373,15 @@ def test_report_export(tmp_path, fmt):
         assert heads == [t for _k, t, _d in SECTIONS]
         assert 'TOC \\o' in d.element.xml
         assert len(d.inline_shapes) == 2  # fe ve cr trend grafikleri
+
+
+def test_edit_password(tmp_path):
+    db = Database(tmp_path / "pw.db")
+    assert db.check_password("gucunkaymagi")
+    assert not db.check_password("yanlis")
+    assert "edit_password_sha256" not in db.settings()
+    db.set_password("yeni")
+    assert db.check_password("yeni") and not db.check_password("gucunkaymagi")
+    db.close()
+    db = Database(tmp_path / "pw.db")  # dosyada kalıcı
+    assert db.check_password("yeni")

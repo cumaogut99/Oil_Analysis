@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import datetime as _dt
+import hashlib
 import json
 import sqlite3
 from dataclasses import dataclass, field
@@ -18,6 +19,20 @@ UNSPECIFIED = "Belirtilmemiş"
 PLATFORM_GROUPS = ["Belirtilmemiş", "Baykar", "TUSAŞ", "TEI"]
 # SGS rapor grafiğinin altındaki teşhis harfleri
 SGS_LETTERS = {"Y": "Yeşil", "T": "Turuncu", "K": "Kırmızı", "S": "Sarı"}
+
+
+# Düzenleme (silme/değiştirme) şifresi. Veritabanında yalnızca SHA-256 özeti saklanır;
+# özet yoksa bu varsayılan şifre geçerlidir.
+DEFAULT_PASSWORD = "gucunkaymagi"
+_PASSWORD_KEY = "edit_password_sha256"
+
+
+def _hash_password(pw: str) -> str:
+    return hashlib.sha256(("oil-analysis:" + (pw or "")).encode("utf-8")).hexdigest()
+
+
+def normalize_oil_type(name) -> str:
+    return " ".join(str(name or "").split()).upper()
 
 
 def sgs_letter_text(letter) -> str | None:
@@ -44,6 +59,8 @@ DEFAULT_SETTINGS = {
     "tbn_ratio_alarm": 0.5,
     # Yağ sınıfına göre 100°C viskozite aralığı (SAE J300)
     "visc_limits": {"0W40": [12.5, 16.3], "5W30": [9.3, 12.5]},
+    # Seçim listelerinde gösterilen tanımlı yağ tipleri (Ayarlar > Yağ Tipleri)
+    "oil_types": ["0W40", "5W30"],
     # Sabit (mutlak) limitler: key -> {lo_alarm, lo_warn, hi_warn, hi_alarm}
     "fixed_limits": {"glycol": {"hi_warn": 0.0}},
     # Parça tahmini: önceki numuneye göre "anlamlı artış" eşikleri
@@ -227,7 +244,7 @@ class Database:
     # ------------------------------------------------------------ ayarlar
     def settings(self) -> dict:
         s = json.loads(json.dumps(DEFAULT_SETTINGS))
-        for row in self.conn.execute("SELECT key, value FROM settings"):
+        for row in self.conn.execute("SELECT key, value FROM settings WHERE key != ?", (_PASSWORD_KEY,)):
             try:
                 s[row["key"]] = json.loads(row["value"])
             except json.JSONDecodeError:
@@ -238,6 +255,17 @@ class Database:
         for k, v in values.items():
             self.conn.execute("INSERT OR REPLACE INTO settings VALUES (?,?)",
                               (k, json.dumps(v, ensure_ascii=False)))
+        self.conn.commit()
+
+    # ------------------------------------------------------------- şifre
+    def check_password(self, pw: str) -> bool:
+        row = self.conn.execute("SELECT value FROM settings WHERE key=?", (_PASSWORD_KEY,)).fetchone()
+        stored = json.loads(row["value"]) if row else _hash_password(DEFAULT_PASSWORD)
+        return _hash_password(pw) == stored
+
+    def set_password(self, pw: str):
+        self.conn.execute("INSERT OR REPLACE INTO settings VALUES (?,?)",
+                          (_PASSWORD_KEY, json.dumps(_hash_password(pw))))
         self.conn.commit()
 
     # --------------------------------------------------------- parametreler

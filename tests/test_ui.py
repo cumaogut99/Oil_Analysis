@@ -66,7 +66,9 @@ def test_motor_filter_select_and_clear(window, app):
 def test_sample_dialog_rename_and_add_visc40(window, app):
     from PySide6.QtCore import Qt
 
+    from oil_analysis.ui import auth
     from oil_analysis.ui.samples_tab import SampleDialog
+    auth.unlock()  # şifre sorulmasın
     st = window.state
     s = next(x for x in st.samples if x.sample_no == "E000")
     d = SampleDialog(st, s, window)
@@ -95,3 +97,39 @@ def test_rename_rejects_duplicate(tmp_path):
     assert db.rename_sample(a1.id, "a2") is False
     assert db.rename_sample(a1.id, "a3") is True
     assert {s.sample_no for s in db.load_samples()} == {"A2", "A3"}
+
+
+def test_password_prompt_blocks_edit_when_cancelled(window, app, monkeypatch):
+    from oil_analysis.ui import auth
+    from oil_analysis.ui.samples_tab import SampleDialog
+    auth.lock()
+    st = window.state
+    s = next(x for x in st.samples if x.sample_no == "E001")
+    answers = iter([("yanlis", True), ("", False)])
+    monkeypatch.setattr(QtWidgets.QInputDialog, "getText", staticmethod(lambda *a, **k: next(answers)))
+    monkeypatch.setattr(QtWidgets.QMessageBox, "warning", staticmethod(lambda *a, **k: None))
+    d = SampleDialog(st, s, window)
+    d.e_no.setText("E001-X")
+    d.save()
+    assert not auth.is_unlocked()
+    assert any(x.sample_no == "E001" for x in st.samples)  # değişmedi
+    monkeypatch.setattr(QtWidgets.QInputDialog, "getText",
+                        staticmethod(lambda *a, **k: ("gucunkaymagi", True)))
+    d.save()
+    assert auth.is_unlocked()
+    assert any(x.sample_no == "E001-X" for x in st.samples)
+    auth.lock()
+
+
+def test_settings_add_oil_type(window, app, monkeypatch):
+    from oil_analysis.ui import auth
+    from oil_analysis.ui.settings_dialog import SettingsDialog
+    auth.unlock()
+    st = window.state
+    d = SettingsDialog(st, window)
+    monkeypatch.setattr(QtWidgets.QInputDialog, "getText", staticmethod(lambda *a, **k: (" 10w-40 ", True)))
+    d._new_oil()
+    d.save()
+    assert "10W-40" in st.settings["oil_types"]
+    assert "10W-40" in st.oil_types()
+    auth.lock()
